@@ -75,13 +75,11 @@ export async function searchWeb(query: string, limit = 5): Promise<WebSource[]> 
     const res = await fetch(
       `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
       {
-        method: "POST",
         headers: {
-          "content-type": "application/x-www-form-urlencoded",
           "user-agent":
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
+          accept: "text/html",
         },
-        body: `q=${encodeURIComponent(query)}`,
       },
     );
     const html = await res.text();
