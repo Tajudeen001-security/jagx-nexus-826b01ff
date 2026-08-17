@@ -65,7 +65,7 @@ export function Terminal() {
         case "whoami":
           push({
             kind: "out",
-            text: `operator@jagx\nagent: JagX AI 4.2 (JagX & JRILICENSE)\nrуntime: ${navigator.userAgent}`.replace("rуntime", "runtime"),
+            text: `operator@jagx\nagent: JagX AI 4.2 (JagX & JRILICENSE)\nruntime: ${navigator.userAgent}`,
           });
           break;
         case "grades":
