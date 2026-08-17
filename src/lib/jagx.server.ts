@@ -83,16 +83,18 @@ export async function searchWeb(query: string, limit = 5): Promise<WebSource[]> 
       },
     );
     const html = await res.text();
-    const blocks = html.split('class="result__body"').slice(1, limit + 1);
+    const blocks = html.split("result__body").slice(1, limit + 1);
     for (const b of blocks) {
-      const link = b.match(/class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/);
+      const anchor = b.match(/<a[^>]*class="result__a"[^>]*>([\s\S]*?)<\/a>/);
+      const href = anchor ? anchor[0].match(/href="([^"]+)"/) : null;
       const snip = b.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/);
-      if (!link) continue;
-      let url = decode(link[1] ?? "");
+      if (!anchor || !href) continue;
+      let url = decode(href[1] ?? "");
       const uddg = url.match(/uddg=([^&]+)/);
       if (uddg?.[1]) url = decodeURIComponent(uddg[1]);
+      if (url.startsWith("//")) url = `https:${url}`;
       out.push({
-        title: decode(link[2] ?? ""),
+        title: decode(anchor[1] ?? ""),
         url,
         snippet: snip ? decode(snip[1] ?? "") : "",
       });
