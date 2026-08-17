@@ -38,6 +38,10 @@ export function Terminal() {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [lines, busy]);
 
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
   const push = (l: Line) => setLines((p) => [...p, l]);
 
   async function run(raw: string) {
