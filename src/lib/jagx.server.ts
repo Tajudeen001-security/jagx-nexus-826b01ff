@@ -90,13 +90,13 @@ export async function searchWeb(query: string, limit = 5): Promise<WebSource[]> 
       const link = b.match(/class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/);
       const snip = b.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/);
       if (!link) continue;
-      let url = decode(link[1]);
+      let url = decode(link[1] ?? "");
       const uddg = url.match(/uddg=([^&]+)/);
-      if (uddg) url = decodeURIComponent(uddg[1]);
+      if (uddg?.[1]) url = decodeURIComponent(uddg[1]);
       out.push({
-        title: decode(link[2]),
+        title: decode(link[2] ?? ""),
         url,
-        snippet: snip ? decode(snip[1]) : "",
+        snippet: snip ? decode(snip[1] ?? "") : "",
       });
     }
   } catch {
@@ -148,7 +148,7 @@ export async function jagxChat(opts: {
   history: ChatTurn[];
   grade: Grade;
   web: boolean;
-  maxTokens?: number;
+  maxTokens?: number | undefined;
 }): Promise<{ response: string; model: string; quota: string; sources: WebSource[] }> {
   const key = process.env["JAGX_API_KEY"];
   if (!key) throw new Error("JAGX_API_KEY is not configured.");
@@ -160,7 +160,7 @@ export async function jagxChat(opts: {
   if (opts.web) {
     sources = await searchWeb(opts.message);
     if (sources.length) {
-      const top = await readPage(sources[0].url);
+      const top = await readPage(sources[0]?.url ?? "");
       context =
         "\n\nLIVE WEB CONTEXT (retrieved just now — use it, cite URLs):\n" +
         sources.map((s, i) => `[${i + 1}] ${s.title}\n${s.url}\n${s.snippet}`).join("\n\n") +

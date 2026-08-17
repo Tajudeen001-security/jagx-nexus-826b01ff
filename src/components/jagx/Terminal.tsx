@@ -189,13 +189,13 @@ export function Terminal() {
                   const n = Math.min(hi + 1, hist.length - 1);
                   if (n >= 0) {
                     setHi(n);
-                    setValue(hist[n]);
+                    setValue(hist[n] ?? "");
                   }
                 } else if (e.key === "ArrowDown") {
                   e.preventDefault();
                   const n = hi - 1;
                   setHi(n);
-                  setValue(n >= 0 ? hist[n] : "");
+                  setValue(n >= 0 ? (hist[n] ?? "") : "");
                 }
               }}
               spellCheck={false}
