@@ -14,7 +14,13 @@ self.onmessage = async (e) => {
   const t0 = Date.now();
   try {
     const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-    const fn = new AsyncFunction("\\n" + e.data.code + "\\n");
+    let fn;
+    try {
+      // single expression -> return its value
+      fn = new AsyncFunction("return (\\n" + e.data.code + "\\n);");
+    } catch {
+      fn = new AsyncFunction("\\n" + e.data.code + "\\n");
+    }
     const out = await fn();
     self.postMessage({ ok: true, logs, result: out === undefined ? undefined : fmt(out), ms: Date.now() - t0 });
   } catch (err) {
