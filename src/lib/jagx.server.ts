@@ -1,3 +1,5 @@
+// src/lib/jagx.server.ts
+
 export type ChatTurn = { role: "user" | "assistant"; content: string };
 
 export type Grade =
@@ -8,7 +10,10 @@ export type Grade =
   | "creator"
   | "operator";
 
-export const GRADES: Record<Grade, { label: string; blurb: string; system: string; tokens: number }> = {
+export const GRADES: Record<
+  Grade,
+  { label: string; blurb: string; system: string; tokens: number }
+> = {
   core: {
     label: "Core",
     blurb: "Balanced general intelligence",
@@ -53,7 +58,8 @@ export const GRADES: Record<Grade, { label: string; blurb: string; system: strin
   },
 };
 
-const BASE = () => process.env["JAGX_BASE_URL"] || "https://jagx-ai-v2.onrender.com";
+const BASE = () =>
+  process.env["JAGX_BASE_URL"] || "https://jagx-ai-v2.onrender.com";
 
 export type WebSource = { title: string; url: string; snippet: string };
 
@@ -71,6 +77,7 @@ function decode(s: string) {
 
 export async function searchWeb(query: string, limit = 5): Promise<WebSource[]> {
   const out: WebSource[] = [];
+
   try {
     const res = await fetch(
       `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
@@ -82,17 +89,22 @@ export async function searchWeb(query: string, limit = 5): Promise<WebSource[]> 
         },
       },
     );
+
     const html = await res.text();
     const blocks = html.split("result__body").slice(1, limit + 1);
+
     for (const b of blocks) {
       const anchor = b.match(/<a[^>]*class="result__a"[^>]*>([\s\S]*?)<\/a>/);
       const href = anchor ? anchor[0].match(/href="([^"]+)"/) : null;
       const snip = b.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/);
+
       if (!anchor || !href) continue;
+
       let url = decode(href[1] ?? "");
       const uddg = url.match(/uddg=([^&]+)/);
       if (uddg?.[1]) url = decodeURIComponent(uddg[1]);
       if (url.startsWith("//")) url = `https:${url}`;
+
       out.push({
         title: decode(anchor[1] ?? ""),
         url,
@@ -100,7 +112,7 @@ export async function searchWeb(query: string, limit = 5): Promise<WebSource[]> 
       });
     }
   } catch {
-    /* fall through */
+    // fall through
   }
 
   if (out.length === 0) {
@@ -114,6 +126,7 @@ export async function searchWeb(query: string, limit = 5): Promise<WebSource[]> 
         Heading?: string;
         RelatedTopics?: Array<{ Text?: string; FirstURL?: string }>;
       };
+
       if (j.AbstractText) {
         out.push({
           title: j.Heading || query,
@@ -121,13 +134,21 @@ export async function searchWeb(query: string, limit = 5): Promise<WebSource[]> 
           snippet: j.AbstractText,
         });
       }
+
       for (const t of j.RelatedTopics?.slice(0, limit) ?? []) {
-        if (t.Text && t.FirstURL) out.push({ title: t.Text.slice(0, 80), url: t.FirstURL, snippet: t.Text });
+        if (t.Text && t.FirstURL) {
+          out.push({
+            title: t.Text.slice(0, 80),
+            url: t.FirstURL,
+            snippet: t.Text,
+          });
+        }
       }
     } catch {
-      /* ignore */
+      // ignore
     }
   }
+
   return out.slice(0, limit);
 }
 
@@ -151,7 +172,12 @@ export async function jagxChat(opts: {
   maxTokens?: number | undefined;
 }): Promise<{ response: string; model: string; quota: string; sources: WebSource[] }> {
   const key = process.env["JAGX_API_KEY"];
-  if (!key) throw new Error("JAGX_API_KEY is not configured.");
+
+  if (!key || key.trim() === "") {
+    throw new Error(
+      "JAGX_API_KEY is missing. Go to Vercel → Settings → Environment Variables and add JAGX_API_KEY, then Redeploy.",
+    );
+  }
 
   const grade = GRADES[opts.grade] ?? GRADES.core;
   let sources: WebSource[] = [];
@@ -163,37 +189,59 @@ export async function jagxChat(opts: {
       const top = await readPage(sources[0]?.url ?? "");
       context =
         "\n\nLIVE WEB CONTEXT (retrieved just now — use it, cite URLs):\n" +
-        sources.map((s, i) => `[${i + 1}] ${s.title}\n${s.url}\n${s.snippet}`).join("\n\n") +
+        sources
+          .map((s, i) => `[${i + 1}] \( {s.title}\n \){s.url}\n${s.snippet}`)
+          .join("\n\n") +
         (top ? `\n\nFULL TEXT OF [1]:\n${top}` : "");
     }
   }
 
   const payload = {
-    message: `${grade.system}\n\nUSER REQUEST:\n${opts.message}${context}`,
+    message: `\( {grade.system}\n\nUSER REQUEST:\n \){opts.message}${context}`,
     max_tokens: opts.maxTokens ?? grade.tokens,
     history: opts.history.slice(-12),
   };
 
   const res = await fetch(`${BASE()}/chat`, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-api-key": key },
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": key.trim(),
+    },
     body: JSON.stringify(payload),
   });
 
   if (!res.ok) {
     let detail = `JagX API error ${res.status}`;
+
     try {
       const j = (await res.json()) as { detail?: string };
       if (j.detail) detail = j.detail;
     } catch {
-      /* ignore */
+      // ignore parse errors
     }
-    if (res.status === 401) detail = "Invalid or inactive JagX API key. Update JAGX_API_KEY.";
-    if (res.status === 429) detail = detail || "Hourly rate limit reached.";
+
+    if (res.status === 401) {
+      detail =
+        "Invalid or inactive JagX API key. " +
+        "1. Check that JAGX_API_KEY in Vercel is correct. " +
+        "2. Make sure the key is still active on the JagX backend. " +
+        "3. Redeploy after changing the environment variable.";
+    }
+
+    if (res.status === 429) {
+      detail = detail || "Hourly rate limit reached. Please wait or upgrade your key.";
+    }
+
     throw new Error(detail);
   }
 
-  const data = (await res.json()) as { response?: string; model?: string; quota?: string };
+  const data = (await res.json()) as {
+    response?: string;
+    model?: string;
+    quota?: string;
+  };
+
   return {
     response: data.response ?? "",
     model: data.model ?? "JagX AI 4.2",
@@ -204,7 +252,9 @@ export async function jagxChat(opts: {
 
 export async function jagxStatus() {
   try {
-    const r = await fetch(`${BASE()}/`, { signal: AbortSignal.timeout(20000) });
+    const r = await fetch(`${BASE()}/`, {
+      signal: AbortSignal.timeout(20000),
+    });
     const j = (await r.json()) as Record<string, unknown>;
     return { online: true, ...j };
   } catch {
