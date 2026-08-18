@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { jagxChat, jagxStatus, searchWeb } from "./jagx.server";
+import { jagxChat, jagxStatus, searchWeb, readPage } from "./jagx.server";
+import { analyzeAttachments, generateImage } from "./ai.server";
 
 const ChatInput = z.object({
   message: z.string().min(1),
@@ -23,3 +24,29 @@ export const getJagxStatus = createServerFn({ method: "GET" }).handler(async () 
 export const webSearch = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => z.object({ query: z.string().min(1) }).parse(input))
   .handler(async ({ data }) => ({ results: await searchWeb(data.query, 6) }));
+
+export const fetchPage = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => z.object({ url: z.string().url() }).parse(input))
+  .handler(async ({ data }) => ({ text: await readPage(data.url) }));
+
+const AttachInput = z.object({
+  prompt: z.string().min(1),
+  attachments: z
+    .array(
+      z.object({
+        name: z.string(),
+        mime: z.string(),
+        dataUrl: z.string().min(8),
+      }),
+    )
+    .min(1)
+    .max(6),
+});
+
+export const readAttachments = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => AttachInput.parse(input))
+  .handler(async ({ data }) => analyzeAttachments(data));
+
+export const makeImage = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => z.object({ prompt: z.string().min(2) }).parse(input))
+  .handler(async ({ data }) => generateImage(data.prompt));
