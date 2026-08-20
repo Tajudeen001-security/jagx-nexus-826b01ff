@@ -1,91 +1,107 @@
-const GATEWAY = "https://ai.gateway.lovable.dev/v1";
+// src/lib/ai.server.ts
 
-function key() {
-  const k = process.env["LOVABLE_API_KEY"];
-  if (!k) throw new Error("AI gateway key is not configured.");
-  return k;
-}
+const JAGX_BASE = process.env["JAGX_BASE_URL"] || "https://jagx-ai-v2.onrender.com";
 
-async function gateway(path: string, body: unknown) {
-  const res = await fetch(`${GATEWAY}${path}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${key()}`,
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    let msg = `AI gateway error ${res.status}`;
-    try {
-      const j = JSON.parse(text) as { error?: { message?: string }; message?: string };
-      msg = j.error?.message || j.message || msg;
-    } catch {
-      /* keep default */
-    }
-    if (res.status === 429) msg = "Rate limited — wait a moment and try again.";
-    if (res.status === 402) msg = `${msg} (AI credits exhausted — top up in Lovable.)`;
-    throw new Error(msg);
+function getJagxKey(): string {
+  const key = process.env["JAGX_API_KEY"];
+  if (!key) {
+    throw new Error(
+      "JAGX_API_KEY is missing. Please add it in your Vercel Environment Variables."
+    );
   }
-  return (await res.json()) as Record<string, unknown>;
+  return key.trim();
 }
 
-type Att = { name: string; mime: string; dataUrl: string };
+type Att = {
+  name: string;
+  mime: string;
+  dataUrl: string;
+};
 
-/** Read uploaded files (images, PDFs, text) and answer a question about them. */
+/**
+ * Analyze uploaded images / files using JagX backend
+ * Note: Full vision (seeing the image) is limited until we add vision support to the backend.
+ */
 export async function analyzeAttachments(opts: {
   prompt: string;
   attachments: Att[];
 }): Promise<{ text: string }> {
-  const content: unknown[] = [{ type: "text", text: opts.prompt }];
-  for (const a of opts.attachments) {
-    if (a.mime.startsWith("image/")) {
-      content.push({ type: "image_url", image_url: { url: a.dataUrl } });
-    } else if (a.mime === "application/pdf") {
-      content.push({ type: "file", file: { filename: a.name, file_data: a.dataUrl } });
-    } else {
-      const b64 = a.dataUrl.split(",")[1] ?? "";
-      let text = "";
-      try {
-        text = atob(b64);
-      } catch {
-        text = "";
-      }
-      content.push({ type: "text", text: `--- ${a.name} ---\n${text.slice(0, 60000)}` });
-    }
-  }
+  const key = getJagxKey();
 
-  const j = (await gateway("/chat/completions", {
-    model: "google/gemini-3.7-flash",
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are JagX AI Vision. Read the supplied files precisely. Summarize, extract structure, transcribe code or text verbatim when asked, and be concrete.",
+  // Prepare information about the uploaded files
+  const fileInfo = opts.attachments
+    .map((file, index) => {
+      return `File ${index + 1}: \( {file.name} ( \){file.mime})`;
+    })
+    .join("\n");
+
+  const message = `The user uploaded the following file(s):\n${fileInfo}\n\nUser question: ${opts.prompt}\n\nPlease respond helpfully. If you cannot see the actual image content, politely explain that full image understanding is still being improved on JagX AI.`;
+
+  try {
+    const res = await fetch(`${JAGX_BASE}/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": key,
       },
-      { role: "user", content },
-    ],
-  })) as { choices?: Array<{ message?: { content?: string } }> };
+      body: JSON.stringify({
+        message,
+        max_tokens: 1000,
+      }),
+    });
 
-  return { text: j.choices?.[0]?.message?.content ?? "" };
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`JagX API error: ${res.status} - ${errorText}`);
+    }
+
+    const data = await res.json();
+
+    return {
+      text:
+        data.response ||
+        "I received your file, but I couldn't generate a proper response.",
+    };
+  } catch (error: any) {
+    return {
+      text: `I received your file, but there was a problem analyzing it: ${error.message}`,
+    };
+  }
 }
 
-/** Generate an image, returned as a data URL. */
-export async function generateImage(prompt: string): Promise<{ dataUrl: string }> {
-  const j = (await gateway("/images/generations", {
-    model: "google/gemini-3-pro-image",
-    messages: [{ role: "user", content: prompt }],
-    modalities: ["image", "text"],
-  })) as {
-    data?: Array<{ b64_json?: string; url?: string }>;
-    choices?: Array<{ message?: { images?: Array<{ image_url?: { url?: string } }> } }>;
-  };
+/**
+ * Generate an image using JagX backend (/image endpoint)
+ */
+export async function generateImage(
+  prompt: string
+): Promise<{ dataUrl: string }> {
+  const key = getJagxKey();
 
-  const inline = j.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-  if (inline) return { dataUrl: inline };
-  const d = j.data?.[0];
-  if (d?.b64_json) return { dataUrl: `data:image/png;base64,${d.b64_json}` };
-  if (d?.url) return { dataUrl: d.url };
-  throw new Error("Image generation returned no image.");
+  const res = await fetch(`${JAGX_BASE}/image`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": key,
+    },
+    body: JSON.stringify({
+      prompt,
+      width: 1024,
+      height: 1024,
+    }),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Image generation failed: ${errorText}`);
+  }
+
+  const data = await res.json();
+
+  if (data.image_base64) {
+    return {
+      dataUrl: `data:image/png;base64,${data.image_base64}`,
+    };
+  }
+
+  throw new Error("No image returned from JagX backend");
 }
