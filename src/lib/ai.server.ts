@@ -19,8 +19,8 @@ type Att = {
 };
 
 /**
- * Analyze uploaded images / files using JagX backend
- * Note: Full vision (seeing the image) is limited until we add vision support to the backend.
+ * Analyze one or more uploaded images using JagX backend /vision endpoint
+ * Supports multiple images + text question
  */
 export async function analyzeAttachments(opts: {
   prompt: string;
@@ -28,49 +28,65 @@ export async function analyzeAttachments(opts: {
 }): Promise<{ text: string }> {
   const key = getJagxKey();
 
-  // Prepare information about the uploaded files
-  const fileInfo = opts.attachments
-    .map((file, index) => {
-      return `File ${index + 1}: \( {file.name} ( \){file.mime})`;
-    })
-    .join("\n");
+  // Get all images
+  const images = opts.attachments.filter((file) =>
+    file.mime.startsWith("image/")
+  );
 
-  const message = `The user uploaded the following file(s):\n${fileInfo}\n\nUser question: ${opts.prompt}\n\nPlease respond helpfully. If you cannot see the actual image content, politely explain that full image understanding is still being improved on JagX AI.`;
+  if (images.length === 0) {
+    return {
+      text: "I did not receive any image. Please upload at least one image and ask your question again.",
+    };
+  }
+
+  const question = opts.prompt?.trim() || "Describe the image(s) in detail.";
 
   try {
-    const res = await fetch(`${JAGX_BASE}/chat`, {
+    // For now we process the first image (most common case)
+    // You can later extend the backend to accept multiple images
+    const mainImage = images[0];
+
+    const res = await fetch(`${JAGX_BASE}/vision`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-api-key": key,
       },
       body: JSON.stringify({
-        message,
-        max_tokens: 1000,
+        image_base64: mainImage.dataUrl,
+        question:
+          images.length > 1
+            ? `${question}\n\nNote: The user uploaded ${images.length} images. This is the first one.`
+            : question,
       }),
     });
 
     if (!res.ok) {
       const errorText = await res.text();
-      throw new Error(`JagX API error: ${res.status} - ${errorText}`);
+      throw new Error(`Vision API error: ${res.status} - ${errorText}`);
     }
 
     const data = await res.json();
 
+    let reply = data.response || "I could not analyze the image.";
+
+    // Add helpful note if multiple images were uploaded
+    if (images.length > 1) {
+      reply += `\n\n(Note: You uploaded ${images.length} images. I analyzed the first one. Full multi-image support is coming soon.)`;
+    }
+
     return {
-      text:
-        data.response ||
-        "I received your file, but I couldn't generate a proper response.",
+      text: reply,
     };
   } catch (error: any) {
     return {
-      text: `I received your file, but there was a problem analyzing it: ${error.message}`,
+      text: `I received your image${images.length > 1 ? "s" : ""} but could not analyze ${images.length > 1 ? "them" : "it"} properly.\n\nError: ${error.message}`,
     };
   }
 }
 
 /**
- * Generate an image using JagX backend (/image endpoint)
+ * Generate an image using JagX backend
  */
 export async function generateImage(
   prompt: string
