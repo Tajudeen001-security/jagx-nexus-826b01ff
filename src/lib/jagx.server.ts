@@ -18,42 +18,42 @@ export const GRADES: Record<
     label: "Core",
     blurb: "Balanced general intelligence",
     system:
-      "Operate as JagX AI Core: precise, direct, high-signal answers with zero filler.",
-    tokens: 1200,
+      "You are JagX AI Core. Give clear, helpful, and natural answers. Be friendly and direct.",
+    tokens: 1500,
   },
   engineer: {
     label: "Engineer",
     blurb: "Deep coding, debugging, refactors",
     system:
-      "Operate as JagX AI Engineer: an elite software engineer. Always give complete, runnable code in fenced blocks with the language tag, explain trade-offs briefly, call out edge cases, security issues and complexity. Prefer production-grade patterns over toy examples.",
+      "You are JagX AI Engineer. You are an expert software engineer. Always provide complete, clean, and runnable code. Explain briefly when needed.",
     tokens: 2400,
   },
   researcher: {
     label: "Researcher",
     blurb: "Evidence-led synthesis with sources",
     system:
-      "Operate as JagX AI Researcher: synthesize evidence, separate fact from inference, cite the sources supplied in LIVE WEB CONTEXT by their URL, and state clearly when something is unverified.",
+      "You are JagX AI Researcher. Provide well-researched answers. Use the live web context when available and cite sources clearly.",
     tokens: 2000,
   },
   architect: {
     label: "Architect",
     blurb: "Systems, infra, scale strategy",
     system:
-      "Operate as JagX AI Architect: reason about systems at scale — data models, failure modes, throughput, cost, migration paths. Answer with structured sections and concrete numbers.",
+      "You are JagX AI Architect. Think about systems, scalability, architecture, and best practices. Give structured and practical advice.",
     tokens: 2000,
   },
   creator: {
     label: "Creator",
     blurb: "Writing, naming, narrative, brand",
     system:
-      "Operate as JagX AI Creator: sharp, original, distinctive voice. No cliches, no corporate filler. Offer options when useful.",
+      "You are JagX AI Creator. Be creative, original, and clear. Help with writing, naming, branding, and content.",
     tokens: 1600,
   },
   operator: {
     label: "Operator",
     blurb: "Terminal ops, shell, automation",
     system:
-      "Operate as JagX AI Operator: a command-line and automation expert. Reply with exact commands, flags and scripts. Warn before anything destructive.",
+      "You are JagX AI Operator. Provide exact commands, scripts, and clear step-by-step instructions for terminals and automation.",
     tokens: 1400,
   },
 };
@@ -112,41 +112,7 @@ export async function searchWeb(query: string, limit = 5): Promise<WebSource[]> 
       });
     }
   } catch {
-    // fall through
-  }
-
-  if (out.length === 0) {
-    try {
-      const r = await fetch(
-        `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`,
-      );
-      const j = (await r.json()) as {
-        AbstractText?: string;
-        AbstractURL?: string;
-        Heading?: string;
-        RelatedTopics?: Array<{ Text?: string; FirstURL?: string }>;
-      };
-
-      if (j.AbstractText) {
-        out.push({
-          title: j.Heading || query,
-          url: j.AbstractURL || "",
-          snippet: j.AbstractText,
-        });
-      }
-
-      for (const t of j.RelatedTopics?.slice(0, limit) ?? []) {
-        if (t.Text && t.FirstURL) {
-          out.push({
-            title: t.Text.slice(0, 80),
-            url: t.FirstURL,
-            snippet: t.Text,
-          });
-        }
-      }
-    } catch {
-      // ignore
-    }
+    // ignore
   }
 
   return out.slice(0, limit);
@@ -155,7 +121,7 @@ export async function searchWeb(query: string, limit = 5): Promise<WebSource[]> 
 export async function readPage(url: string): Promise<string> {
   try {
     const r = await fetch(`https://r.jina.ai/${url}`, {
-      headers: { "user-agent": "JagX-AI/4.2" },
+      headers: { "user-agent": "JagX-AI/5.0" },
     });
     if (!r.ok) return "";
     return (await r.text()).slice(0, 6000);
@@ -181,14 +147,14 @@ export async function jagxChat(opts: {
 
   const grade = GRADES[opts.grade] ?? GRADES.core;
   let sources: WebSource[] = [];
-  let context = "";
+  let extraContext = "";
 
   if (opts.web) {
     sources = await searchWeb(opts.message);
     if (sources.length) {
       const top = await readPage(sources[0]?.url ?? "");
-      context =
-        "\n\nLIVE WEB CONTEXT (retrieved just now — use it, cite URLs):\n" +
+      extraContext =
+        "\n\nLIVE WEB CONTEXT:\n" +
         sources
           .map((s, i) => `[${i + 1}] \( {s.title}\n \){s.url}\n${s.snippet}`)
           .join("\n\n") +
@@ -196,8 +162,11 @@ export async function jagxChat(opts: {
     }
   }
 
+  // ✅ CLEAN MESSAGE (This is the important fix)
+  const cleanMessage = opts.message + extraContext;
+
   const payload = {
-    message: `\( {grade.system}\n\nUSER REQUEST:\n \){opts.message}${context}`,
+    message: cleanMessage,
     max_tokens: opts.maxTokens ?? grade.tokens,
     history: opts.history.slice(-12),
   };
@@ -218,15 +187,12 @@ export async function jagxChat(opts: {
       const j = (await res.json()) as { detail?: string };
       if (j.detail) detail = j.detail;
     } catch {
-      // ignore parse errors
+      // ignore
     }
 
     if (res.status === 401) {
       detail =
-        "Invalid or inactive JagX API key. " +
-        "1. Check that JAGX_API_KEY in Vercel is correct. " +
-        "2. Make sure the key is still active on the JagX backend. " +
-        "3. Redeploy after changing the environment variable.";
+        "Invalid or inactive JagX API key. Check JAGX_API_KEY in Vercel and make sure the key is active.";
     }
 
     if (res.status === 429) {
@@ -244,7 +210,7 @@ export async function jagxChat(opts: {
 
   return {
     response: data.response ?? "",
-    model: data.model ?? "JagX AI 4.2",
+    model: data.model ?? "JagX AI 5.0",
     quota: data.quota ?? "",
     sources,
   };
