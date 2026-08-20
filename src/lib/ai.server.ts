@@ -19,8 +19,7 @@ type Att = {
 };
 
 /**
- * Analyze one or more uploaded images using JagX backend /vision endpoint
- * Supports multiple images + text question
+ * Analyze one or more uploaded images using JagX backend /vision
  */
 export async function analyzeAttachments(opts: {
   prompt: string;
@@ -28,7 +27,6 @@ export async function analyzeAttachments(opts: {
 }): Promise<{ text: string }> {
   const key = getJagxKey();
 
-  // Get all images
   const images = opts.attachments.filter((file) =>
     file.mime.startsWith("image/")
   );
@@ -42,10 +40,6 @@ export async function analyzeAttachments(opts: {
   const question = opts.prompt?.trim() || "Describe the image(s) in detail.";
 
   try {
-    // For now we process the first image (most common case)
-    // You can later extend the backend to accept multiple images
-    const mainImage = images[0];
-
     const res = await fetch(`${JAGX_BASE}/vision`, {
       method: "POST",
       headers: {
@@ -53,11 +47,8 @@ export async function analyzeAttachments(opts: {
         "x-api-key": key,
       },
       body: JSON.stringify({
-        image_base64: mainImage.dataUrl,
-        question:
-          images.length > 1
-            ? `${question}\n\nNote: The user uploaded ${images.length} images. This is the first one.`
-            : question,
+        images: images.map((img) => img.dataUrl),
+        question: question,
       }),
     });
 
@@ -68,15 +59,8 @@ export async function analyzeAttachments(opts: {
 
     const data = await res.json();
 
-    let reply = data.response || "I could not analyze the image.";
-
-    // Add helpful note if multiple images were uploaded
-    if (images.length > 1) {
-      reply += `\n\n(Note: You uploaded ${images.length} images. I analyzed the first one. Full multi-image support is coming soon.)`;
-    }
-
     return {
-      text: reply,
+      text: data.response || "I could not analyze the image.",
     };
   } catch (error: any) {
     return {
