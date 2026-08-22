@@ -14,9 +14,9 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "JagX AI 4.2: six intelligence grades, an embedded coding terminal, live web retrieval and permissioned device access. Built by JagX & JRILICENSE.",
+          "JagX AI 4.2: thirteen intelligence modes, an embedded coding terminal, live web retrieval and sandboxed execution. Built by JagX & JRILICENSE.",
       },
-      { property: "og:title", content: "JagX AI 4.2 — Intelligence Console" },
+      { property: "og:title", content: "JagX AI 6.6 — Intelligence Console" },
       {
         property: "og:description",
         content:
