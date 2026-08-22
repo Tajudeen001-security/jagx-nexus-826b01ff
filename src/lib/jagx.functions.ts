@@ -6,7 +6,10 @@ import { analyzeAttachments, generateImage } from "./ai.server";
 const ChatInput = z.object({
   message: z.string().min(1),
   grade: z
-    .enum(["core", "engineer", "researcher", "architect", "creator", "operator"])
+    .enum([
+      "core", "engineer", "researcher", "architect", "creator", "operator",
+      "analyst", "educator", "strategist", "scholar", "legal", "designer", "guardian",
+    ])
     .default("core"),
   web: z.boolean().default(false),
   maxTokens: z.number().int().min(64).max(4000).optional(),
@@ -32,13 +35,7 @@ export const fetchPage = createServerFn({ method: "POST" })
 const AttachInput = z.object({
   prompt: z.string().min(1),
   attachments: z
-    .array(
-      z.object({
-        name: z.string(),
-        mime: z.string(),
-        dataUrl: z.string().min(8),
-      }),
-    )
+    .array(z.object({ name: z.string(), mime: z.string(), dataUrl: z.string().min(8) }))
     .min(1)
     .max(6),
 });
