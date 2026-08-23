@@ -77,14 +77,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "JagX AI 4.2" },
-      { name: "description", content: "JagX AI 4.2 — advanced intelligence console by JagX & JRILICENSE." },
+      { title: "JagX AI 6.7" },
+      { name: "description", content: "JagX AI 6.7 — advanced intelligence console by JagX & JRILICENSE." },
       { name: "author", content: "JagX & JRILICENSE" },
-      { property: "og:title", content: "JagX AI 4.2" },
+      { property: "og:title", content: "JagX AI 6.7" },
       { property: "og:description", content: "Advanced intelligence console, terminal and live web retrieval." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      
     ],
     links: [
       {
