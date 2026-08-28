@@ -13,13 +13,13 @@ import { listSessions, saveSession, newSessionId, titleFromMessages } from "@/li
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "JagX AI 6.7 — Intelligence Console, Terminal & Live Web" },
+      { title: "JagX AI 1.1.2 — Intelligence Console, Terminal & Live Web" },
       {
         name: "description",
         content:
-          "JagX AI 6.7: thirteen intelligence modes, an embedded coding terminal, live web retrieval and sandboxed execution. Built by JagX & JRILICENSE.",
+          "JagX AI 1.1.2: thirteen intelligence modes, an embedded coding terminal, live web retrieval and sandboxed execution. Built by JagX & JRILICENSE.",
       },
-      { property: "og:title", content: "JagX AI 6.7 — Intelligence Console" },
+      { property: "og:title", content: "JagX AI 1.1.2 — Intelligence Console" },
       {
         property: "og:description",
         content: "Thirteen intelligence modes, embedded terminal, live web retrieval and sandboxed execution.",
@@ -84,7 +84,7 @@ function Home() {
                 JagX <span className="text-brand">AI</span>
               </h1>
               <p className="font-mono text-[9px] uppercase tracking-[0.28em] text-muted-foreground">
-                v6.7 · unlimited
+                v1.1.2 · unlimited
               </p>
             </div>
           </div>
