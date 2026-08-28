@@ -4,32 +4,49 @@ Mobile app for **JagX AI** — Grok × Claude style console.
 Built by **JagX & JRILICENSE**.
 
 Web site stays separate: https://www.jagxai.name.ng/
-This folder is **mobile only** and does not replace the existing site code.
+This folder is **mobile only**.
 
-## Features
+## Providers (no xAI)
 
-- Streaming chat with live activity steps + elapsed time
-- Thirteen intelligence modes
-- Live web retrieval (DuckDuckGo)
-- Code Lab (analyze + improve with LLM)
-- Book Studio (Markdown generate + export/share)
-- Image Studio (xAI image generation)
-- Auth: email/password + Google (Better Auth compatible, local fallback)
+| Provider | Env / dart-define | Notes |
+|----------|-------------------|--------|
+| **OpenRouter** | `OPENROUTER_API_KEY` | Prefer free models e.g. `moonshotai/kimi-k2:free` |
+| **Kimi (Moonshot)** | `KIMI_API_KEY` or `MOONSHOT_API_KEY` | Official API is **paid** (credits on signup possible) |
+| **NVIDIA NIM** | `NVIDIA_API_KEY` | Free tier on build.nvidia.com |
+| **Groq** | `GROQ_API_KEY` | Strong free tier |
 
-## Run
+Priority in app: OpenRouter → Kimi → NVIDIA → Groq.
+
+**Images:** free Pollinations (no key).
+
+## Do not paste keys in chat or commit them
+
+1. Get keys from each provider console.
+2. For **GitHub Actions builds**: Repo → Settings → Secrets and variables → Actions → New repository secret.
+3. For **local / Codemagic / CI build**: pass `--dart-define=NAME=value` at build time.
+
+Suggested secret names:
+
+- `OPENROUTER_API_KEY`
+- `KIMI_API_KEY`
+- `NVIDIA_API_KEY`
+- `GROQ_API_KEY`
+
+## Run (when you have a machine or CI)
 
 ```bash
 cd flutter
 flutter pub get
 flutter run \
   --dart-define=OPENROUTER_API_KEY=sk-or-... \
-  --dart-define=XAI_API_KEY=xai-... \
+  --dart-define=KIMI_API_KEY=sk-... \
   --dart-define=NVIDIA_API_KEY=nvapi-... \
+  --dart-define=GROQ_API_KEY=gsk_... \
   --dart-define=AUTH_BASE_URL=https://www.jagxai.name.ng
 ```
 
-At least one LLM key is required for chat. Image Studio needs `XAI_API_KEY`.
+At least **one** LLM key is required for chat.
 
 ## Version
 
-**1.1.2** — not 6.7.
+**1.1.2**
