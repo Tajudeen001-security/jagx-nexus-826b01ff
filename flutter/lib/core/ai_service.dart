@@ -122,7 +122,7 @@ class AiService {
         ok: false,
         text: '',
         error:
-            'Pass --dart-define=OPENROUTER_API_KEY or XAI_API_KEY or NVIDIA_API_KEY',
+            'Add a key: OPENROUTER_API_KEY, KIMI_API_KEY, NVIDIA_API_KEY, or GROQ_API_KEY',
         steps: steps,
         sources: sources,
         durationMs: DateTime.now().difference(started).inMilliseconds,
@@ -162,19 +162,17 @@ class AiService {
     }
   }
 
+  /// Priority: OpenRouter → Kimi → NVIDIA → Groq
   Future<(String, String)> _complete(
     List<Map<String, String>> messages,
     int maxTokens,
   ) async {
-    if (AppConfig.xaiApiKey.isNotEmpty) {
-      return _openAi(AppConfig.xaiBase, AppConfig.xaiApiKey, 'grok-4.5',
-          messages, maxTokens);
-    }
     if (AppConfig.openRouterApiKey.isNotEmpty) {
       return _openAi(
         AppConfig.openRouterBase,
         AppConfig.openRouterApiKey,
-        'x-ai/grok-4.5',
+        // Prefer free routes when available; OpenRouter will fall through paid if needed.
+        'moonshotai/kimi-k2:free',
         messages,
         maxTokens,
         extra: {
@@ -183,10 +181,28 @@ class AiService {
         },
       );
     }
+    if (AppConfig.effectiveKimiKey.isNotEmpty) {
+      return _openAi(
+        AppConfig.kimiBase,
+        AppConfig.effectiveKimiKey,
+        'kimi-k2.6',
+        messages,
+        maxTokens,
+      );
+    }
+    if (AppConfig.nvidiaApiKey.isNotEmpty) {
+      return _openAi(
+        AppConfig.nvidiaBase,
+        AppConfig.nvidiaApiKey,
+        'meta/llama-3.1-70b-instruct',
+        messages,
+        maxTokens,
+      );
+    }
     return _openAi(
-      AppConfig.nvidiaBase,
-      AppConfig.nvidiaApiKey,
-      'meta/llama-3.1-70b-instruct',
+      AppConfig.groqBase,
+      AppConfig.groqApiKey,
+      'llama-3.3-70b-versatile',
       messages,
       maxTokens,
     );
@@ -215,7 +231,7 @@ class AiService {
       }),
     );
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw Exception('LLM ${res.statusCode}');
+      throw Exception('LLM ${res.statusCode}: ${res.body}');
     }
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     final choices = data['choices'] as List<dynamic>?;
@@ -251,30 +267,12 @@ class AiService {
     return r.text;
   }
 
+  /// Free image gen via Pollinations (no API key).
   Future<String?> generateImageUrl(String prompt) async {
-    if (AppConfig.xaiApiKey.isEmpty) {
-      throw Exception('Image generation needs XAI_API_KEY');
-    }
     _step('image', 'Generating image');
-    final res = await http.post(
-      Uri.parse('${AppConfig.xaiBase}/images/generations'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ${AppConfig.xaiApiKey}',
-      },
-      body: jsonEncode({
-        'model': 'grok-imagine-image',
-        'prompt': prompt,
-        'n': 1,
-        'response_format': 'url',
-      }),
-    );
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw Exception('Image API ${res.statusCode}');
-    }
-    final data = jsonDecode(res.body) as Map<String, dynamic>;
-    final list = data['data'] as List<dynamic>?;
-    if (list == null || list.isEmpty) return null;
-    return (list.first as Map)['url'] as String?;
+    final encoded = Uri.encodeComponent(prompt.trim());
+    // Deterministic seed from prompt length for cache-friendly URLs.
+    final seed = prompt.hashCode.abs() % 100000;
+    return 'https://image.pollinations.ai/prompt/$encoded?width=1024&height=1024&nologo=true&seed=$seed';
   }
 }
