@@ -51,7 +51,7 @@ export function Settings({ trigger }: { trigger: ReactNode }) {
               <User className="size-3.5" /> Account
             </h3>
             <p className="text-xs text-muted-foreground">
-              Sign-in isn't set up yet on this build — chats are saved to this device only.
+              Better Auth (email/password + Google) is documented in docs/AUTH.md. Wire it on this Lovable deploy next.
             </p>
             <button disabled className="mt-2 flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground opacity-50">
               <LogOut className="size-3.5" /> Log out
@@ -142,7 +142,7 @@ export function Settings({ trigger }: { trigger: ReactNode }) {
             <h3 className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
               <Info className="size-3.5" /> About
             </h3>
-            <p className="text-xs text-muted-foreground">JagX AI · Backend v6.7 · Built by JagX & JRILICENSE.</p>
+            <p className="text-xs text-muted-foreground">JagX AI · v1.1.2 · Built by JagX & JRILICENSE.</p>
           </section>
         </div>
       </SheetContent>
