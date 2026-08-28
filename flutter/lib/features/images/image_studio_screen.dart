@@ -26,10 +26,16 @@ class _ImageStudioScreenState extends State<ImageStudioScreen> {
   Future<void> _go() async {
     final auth = context.read<AuthService>();
     if (auth.currentUser == null) {
-      final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const LoginScreen()));
+      final ok = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
       if (ok != true || !mounted) return;
     }
-    setState(() { _busy = true; _error = null; });
+    setState(() {
+      _busy = true;
+      _error = null;
+      _url = null;
+    });
     try {
       final url = await AiService().generateImageUrl(_prompt.text.trim());
       setState(() => _url = url);
@@ -45,23 +51,60 @@ class _ImageStudioScreenState extends State<ImageStudioScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const Text('Image Studio', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600, color: JagxColors.fg)),
+        const Text(
+          'Image Studio',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w600,
+            color: JagxColors.fg,
+          ),
+        ),
         const SizedBox(height: 6),
-        const Text('Requires XAI_API_KEY. One request at a time.', style: TextStyle(color: JagxColors.muted)),
+        const Text(
+          'Free image generation (Pollinations). No API key required.',
+          style: TextStyle(color: JagxColors.muted),
+        ),
         const SizedBox(height: 16),
-        TextField(controller: _prompt, maxLines: 3, decoration: const InputDecoration(hintText: 'Prompt')),
+        TextField(
+          controller: _prompt,
+          maxLines: 3,
+          decoration: const InputDecoration(hintText: 'Prompt'),
+          onChanged: (_) => setState(() {}),
+        ),
         const SizedBox(height: 12),
         FilledButton(
           onPressed: _busy || _prompt.text.trim().isEmpty ? null : _go,
-          style: FilledButton.styleFrom(backgroundColor: JagxColors.fg, foregroundColor: JagxColors.bg, minimumSize: const Size.fromHeight(48)),
+          style: FilledButton.styleFrom(
+            backgroundColor: JagxColors.fg,
+            foregroundColor: JagxColors.bg,
+            minimumSize: const Size.fromHeight(48),
+          ),
           child: Text(_busy ? 'Generating…' : 'Generate'),
         ),
-        if (_error != null) Text(_error!, style: const TextStyle(color: JagxColors.danger)),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(_error!, style: const TextStyle(color: JagxColors.danger)),
+          ),
         if (_url != null) ...[
           const SizedBox(height: 20),
           ClipRRect(
             borderRadius: BorderRadius.circular(18),
-            child: Image.network(_url!, fit: BoxFit.cover),
+            child: Image.network(
+              _url!,
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return const SizedBox(
+                  height: 240,
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              },
+              errorBuilder: (_, __, ___) => const Text(
+                'Could not load image. Try again.',
+                style: TextStyle(color: JagxColors.danger),
+              ),
+            ),
           ),
         ],
       ],
