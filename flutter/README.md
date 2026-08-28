@@ -8,13 +8,13 @@ This folder is **mobile only** and does not replace the existing site code.
 
 ## Features
 
-- Chat with 13 intelligence modes
-- Live activity steps (searching / reading / writing) + elapsed time
-- Live web retrieval
-- Code Lab
-- Book Studio (Markdown → share)
-- Image Studio
-- Auth: email/password + Google (Better Auth compatible)
+- Streaming chat with live activity steps + elapsed time
+- Thirteen intelligence modes
+- Live web retrieval (DuckDuckGo)
+- Code Lab (analyze + improve with LLM)
+- Book Studio (Markdown generate + export/share)
+- Image Studio (xAI image generation)
+- Auth: email/password + Google (Better Auth compatible, local fallback)
 
 ## Run
 
@@ -24,8 +24,11 @@ flutter pub get
 flutter run \
   --dart-define=OPENROUTER_API_KEY=sk-or-... \
   --dart-define=XAI_API_KEY=xai-... \
+  --dart-define=NVIDIA_API_KEY=nvapi-... \
   --dart-define=AUTH_BASE_URL=https://www.jagxai.name.ng
 ```
+
+At least one LLM key is required for chat. Image Studio needs `XAI_API_KEY`.
 
 ## Version
 
