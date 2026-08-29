@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'config.dart';
@@ -40,6 +41,14 @@ class ChatResult {
     required this.durationMs,
     required this.model,
   });
+}
+
+class StreamChunk {
+  final String? delta;
+  final ActivityStep? step;
+  final bool done;
+  final ChatResult? result;
+  const StreamChunk({this.delta, this.step, this.done = false, this.result});
 }
 
 class AiService {
@@ -90,24 +99,50 @@ class AiService {
     required Grade grade,
     bool web = true,
   }) async {
+    ChatResult? finalResult;
+    await for (final c in chatStream(
+        message: message, history: history, grade: grade, web: web)) {
+      if (c.done && c.result != null) finalResult = c.result;
+    }
+    return finalResult ??
+        ChatResult(
+          ok: false,
+          text: '',
+          error: 'No response',
+          steps: const [],
+          sources: const [],
+          durationMs: 0,
+          model: 'error',
+        );
+  }
+
+  Stream<StreamChunk> chatStream({
+    required String message,
+    required List<ChatTurn> history,
+    required Grade grade,
+    bool web = true,
+  }) async* {
     final started = DateTime.now();
     final steps = <ActivityStep>[];
-    void push(String id, String label, [String? detail]) {
+    ActivityStep push(String id, String label, [String? detail]) {
       final s = ActivityStep(id: id, label: label, detail: detail);
       steps.add(s);
       onStep?.call(s);
+      return s;
     }
 
-    push('think', 'Reading the request');
+    yield StreamChunk(step: push('think', 'Reading the request'));
     var sources = <WebSource>[];
     var extra = '';
     if (web ||
         RegExp(r'\b(today|latest|news|search|web|google)\b',
                 caseSensitive: false)
             .hasMatch(message)) {
+      yield StreamChunk(step: push('search', 'Searching the live web'));
       sources = await searchWeb(message);
       if (sources.isNotEmpty) {
-        push('read', 'Opening top source', sources.first.title);
+        yield StreamChunk(
+            step: push('read', 'Opening top source', sources.first.title));
         extra = '\n\nLIVE WEB:\n' +
             sources
                 .asMap()
@@ -116,19 +151,25 @@ class AiService {
                 .join('\n');
       }
     }
-    push('compose', 'Composing the answer');
+    yield StreamChunk(step: push('compose', 'Writing answer'));
+
     if (!AppConfig.hasAnyLlmKey) {
-      return ChatResult(
-        ok: false,
-        text: '',
-        error:
-            'Add a key: OPENROUTER_API_KEY, KIMI_API_KEY, NVIDIA_API_KEY, or GROQ_API_KEY',
-        steps: steps,
-        sources: sources,
-        durationMs: DateTime.now().difference(started).inMilliseconds,
-        model: 'offline',
+      yield StreamChunk(
+        done: true,
+        result: ChatResult(
+          ok: false,
+          text: '',
+          error:
+              'Add OPENROUTER_API_KEY, KIMI_API_KEY, NVIDIA_API_KEY, or GROQ_API_KEY',
+          steps: steps,
+          sources: sources,
+          durationMs: DateTime.now().difference(started).inMilliseconds,
+          model: 'offline',
+        ),
       );
+      return;
     }
+
     final messages = <Map<String, String>>[
       {
         'role': 'system',
@@ -138,73 +179,153 @@ class AiService {
       ...history.take(12).map((t) => {'role': t.role, 'content': t.content}),
       {'role': 'user', 'content': message + extra},
     ];
+
     try {
-      final result = await _complete(messages, grade.maxTokens);
-      push('done', 'Answer ready');
-      return ChatResult(
-        ok: true,
-        text: result.$1,
-        steps: steps,
-        sources: sources,
-        durationMs: DateTime.now().difference(started).inMilliseconds,
-        model: result.$2,
+      final buffer = StringBuffer();
+      String modelUsed = 'unknown';
+      await for (final piece in _streamComplete(messages, grade.maxTokens)) {
+        if (piece.startsWith('__MODEL__:')) {
+          modelUsed = piece.substring(10);
+          continue;
+        }
+        buffer.write(piece);
+        yield StreamChunk(delta: piece);
+      }
+      yield StreamChunk(step: push('done', 'Answer ready'));
+      yield StreamChunk(
+        done: true,
+        result: ChatResult(
+          ok: true,
+          text: buffer.toString(),
+          steps: steps,
+          sources: sources,
+          durationMs: DateTime.now().difference(started).inMilliseconds,
+          model: modelUsed,
+        ),
       );
     } catch (e) {
-      return ChatResult(
-        ok: false,
-        text: '',
-        error: e.toString(),
-        steps: steps,
-        sources: sources,
-        durationMs: DateTime.now().difference(started).inMilliseconds,
-        model: 'error',
-      );
+      try {
+        final result = await _complete(messages, grade.maxTokens);
+        yield StreamChunk(delta: result.$1);
+        yield StreamChunk(step: push('done', 'Answer ready'));
+        yield StreamChunk(
+          done: true,
+          result: ChatResult(
+            ok: true,
+            text: result.$1,
+            steps: steps,
+            sources: sources,
+            durationMs: DateTime.now().difference(started).inMilliseconds,
+            model: result.$2,
+          ),
+        );
+      } catch (e2) {
+        yield StreamChunk(
+          done: true,
+          result: ChatResult(
+            ok: false,
+            text: '',
+            error: e2.toString(),
+            steps: steps,
+            sources: sources,
+            durationMs: DateTime.now().difference(started).inMilliseconds,
+            model: 'error',
+          ),
+        );
+      }
     }
   }
 
-  /// Priority: OpenRouter → Kimi → NVIDIA → Groq
   Future<(String, String)> _complete(
     List<Map<String, String>> messages,
     int maxTokens,
   ) async {
+    final p = _pickProvider();
+    return _openAi(p.$1, p.$2, p.$3, messages, maxTokens, extra: p.$4);
+  }
+
+  Stream<String> _streamComplete(
+    List<Map<String, String>> messages,
+    int maxTokens,
+  ) async* {
+    final p = _pickProvider();
+    final base = p.$1;
+    final key = p.$2;
+    var model = p.$3;
+    final extra = p.$4;
+
+    final client = http.Client();
+    try {
+      final req = http.Request('POST', Uri.parse('$base/chat/completions'));
+      req.headers.addAll({
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $key',
+        'Accept': 'text/event-stream',
+        ...?extra,
+      });
+      req.body = jsonEncode({
+        'model': model,
+        'messages': messages,
+        'max_tokens': maxTokens,
+        'temperature': 0.5,
+        'stream': true,
+      });
+      final streamed = await client.send(req);
+      if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
+        final body = await streamed.stream.bytesToString();
+        throw Exception('LLM ${streamed.statusCode}: $body');
+      }
+      yield '__MODEL__:$model';
+      await for (final line in streamed.stream
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())) {
+        if (!line.startsWith('data:')) continue;
+        final data = line.substring(5).trim();
+        if (data == '[DONE]') break;
+        try {
+          final map = jsonDecode(data) as Map<String, dynamic>;
+          final choices = map['choices'] as List<dynamic>?;
+          if (choices == null || choices.isEmpty) continue;
+          final delta = (choices.first as Map)['delta'] as Map?;
+          final content = delta?['content'] as String?;
+          if (content != null && content.isNotEmpty) yield content;
+          final m = map['model'] as String?;
+          if (m != null) model = m;
+        } catch (_) {}
+      }
+    } finally {
+      client.close();
+    }
+  }
+
+  (String, String, String, Map<String, String>?) _pickProvider() {
     if (AppConfig.openRouterApiKey.isNotEmpty) {
-      return _openAi(
+      return (
         AppConfig.openRouterBase,
         AppConfig.openRouterApiKey,
-        // Prefer free routes when available; OpenRouter will fall through paid if needed.
         'moonshotai/kimi-k2:free',
-        messages,
-        maxTokens,
-        extra: {
+        {
           'HTTP-Referer': 'https://www.jagxai.name.ng',
           'X-Title': 'JagX AI',
         },
       );
     }
     if (AppConfig.effectiveKimiKey.isNotEmpty) {
-      return _openAi(
-        AppConfig.kimiBase,
-        AppConfig.effectiveKimiKey,
-        'kimi-k2.6',
-        messages,
-        maxTokens,
-      );
+      return (AppConfig.kimiBase, AppConfig.effectiveKimiKey, 'kimi-k2.6', null);
     }
     if (AppConfig.nvidiaApiKey.isNotEmpty) {
-      return _openAi(
+      return (
         AppConfig.nvidiaBase,
         AppConfig.nvidiaApiKey,
         'meta/llama-3.1-70b-instruct',
-        messages,
-        maxTokens,
+        null,
       );
     }
-    return _openAi(
+    return (
       AppConfig.groqBase,
       AppConfig.groqApiKey,
       'llama-3.3-70b-versatile',
-      messages,
-      maxTokens,
+      null,
     );
   }
 
@@ -267,11 +388,9 @@ class AiService {
     return r.text;
   }
 
-  /// Free image gen via Pollinations (no API key).
   Future<String?> generateImageUrl(String prompt) async {
     _step('image', 'Generating image');
     final encoded = Uri.encodeComponent(prompt.trim());
-    // Deterministic seed from prompt length for cache-friendly URLs.
     final seed = prompt.hashCode.abs() % 100000;
     return 'https://image.pollinations.ai/prompt/$encoded?width=1024&height=1024&nologo=true&seed=$seed';
   }
