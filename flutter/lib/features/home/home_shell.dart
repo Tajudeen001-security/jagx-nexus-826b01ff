@@ -64,7 +64,6 @@ class _HomeShellState extends State<HomeShell> {
         webEnabled: true,
         onGradeChanged: (grade) => setState(() => _grade = grade),
         onWebChanged: (_) {},
-        showWebToggle: false,
       ),
     );
   }
