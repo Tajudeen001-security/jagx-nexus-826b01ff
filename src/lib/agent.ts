@@ -1,5 +1,6 @@
 import { runInSandbox, formatSandbox } from "./sandbox";
 import { vfs } from "./vfs";
+import { runCode } from "./code-runner";
 
 export type AgentStep = { kind: "thought" | "action" | "observation" | "final"; text: string };
 
@@ -15,11 +16,13 @@ const SYSTEM = `You are JagX AI Operator running inside a real execution loop wi
 Reply with EXACTLY ONE fenced json block and nothing else:
 
 \`\`\`json
-{"thought":"one short line","tool":"js|search|open|write|read|ls|final","args":{...}}
+{"thought":"one short line","tool":"js|run|command|search|open|write|read|ls|final","args":{...}}
 \`\`\`
 
 Tools:
-- js      {"code":"..."}          run JavaScript in a sandboxed worker (async allowed, no DOM/network). Use console.log or return a value.
+- js      {"code":"..."}          run JavaScript in an isolated worker (async allowed, no DOM/network).
+- run     {"language":"python|javascript|typescript|...","code":"..."} run code in the restricted code runner and inspect stdout/stderr.
+- command {"command":"ls|pwd|cat|head|tail|grep|wc|echo","args":"..."} run a safe workspace command; never access the host OS, secrets, or arbitrary shell.
 - search  {"query":"..."}         live web search
 - open    {"url":"https://..."}   read a web page as text
 - write   {"path":"src/x.ts","content":"..."}  write a file into the workspace
@@ -27,7 +30,7 @@ Tools:
 - ls      {}                      list workspace files
 - final   {"answer":"..."}        finish, with the full answer for the user
 
-Rules: verify code by running it with js before claiming it works. Keep iterating until the task is genuinely done, then call final.`;
+Rules: verify code by running it with js or run before claiming it works. Use command for workspace inspection. Never request, expose, or execute host-device secrets or arbitrary shell commands. Keep iterating until the task is genuinely done, then call final.`;
 
 function parseAction(raw: string): { thought?: string; tool: string; args: Record<string, string> } | null {
   const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -85,6 +88,48 @@ export async function runAgent(
           const code = action.args["code"] ?? "";
           emit({ kind: "action", text: `js\n${code}` });
           observation = formatSandbox(await runInSandbox(code));
+          break;
+        }
+        case "run": {
+          const language = action.args["language"] ?? "javascript";
+          const code = action.args["code"] ?? "";
+          emit({ kind: "action", text: `run ${language}` });
+          const r = await runCode(code, language);
+          observation = r.success
+            ? `[ok] ${r.output}`
+            : `[failed] ${r.error ?? r.output}`;
+          break;
+        }
+        case "command": {
+          const command = (action.args["command"] ?? "").trim();
+          const arg = action.args["args"] ?? "";
+          emit({ kind: "action", text: `command ${command} ${arg}`.trim() });
+          const files = vfs.list();
+          if (command === "pwd") observation = "/workspace";
+          else if (command === "ls") observation = files.join("\n") || "(workspace empty)";
+          else if (command === "cat") observation = vfs.read(arg.trim()) ?? `no such file: ${arg}`;
+          else if (command === "head") {
+            const n = Math.max(1, Math.min(200, Number(arg.split(" ")[0]) || 20));
+            const path = arg.split(" ").slice(1).join(" ");
+            observation = (vfs.read(path) ?? `no such file: ${path}`).split("\n").slice(0, n).join("\n");
+          } else if (command === "tail") {
+            const n = Math.max(1, Math.min(200, Number(arg.split(" ")[0]) || 20));
+            const path = arg.split(" ").slice(1).join(" ");
+            const text = vfs.read(path) ?? `no such file: ${path}`;
+            observation = text.split("\n").slice(-n).join("\n");
+          } else if (command === "wc") {
+            const path = arg.trim();
+            const text = vfs.read(path) ?? "";
+            observation = `${text.split("\n").length} lines, ${text.length} chars: ${path}`;
+          } else if (command === "grep") {
+            const parts = arg.trim().split(/\s+/);
+            const pattern = parts.shift() ?? "";
+            const path = parts.join(" ");
+            const text = vfs.read(path) ?? `no such file: ${path}`;
+            try { observation = text.split("\n").filter(line => new RegExp(pattern, "i").test(line)).slice(0, 100).join("\n") || "(no matches)"; }
+            catch { observation = "invalid grep pattern"; }
+          } else if (command === "echo") observation = arg;
+          else observation = "command not allowed; use pwd, ls, cat, head, tail, grep, wc, or echo";
           break;
         }
         case "search": {
