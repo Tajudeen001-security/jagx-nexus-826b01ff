@@ -86,6 +86,55 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  void _showModes() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: JagxColors.surface,
+      showDragHandle: true,
+      builder: (_) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
+          children: [
+            const Text(
+              'JagX modes',
+              style: TextStyle(
+                color: JagxColors.fg,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 12),
+            for (final mode in grades)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  mode.label,
+                  style: const TextStyle(
+                    color: JagxColors.fg,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                subtitle: Text(
+                  mode.blurb,
+                  style: const TextStyle(color: JagxColors.muted),
+                ),
+                trailing: mode.id == widget.grade.id
+                    ? const Icon(Icons.check, color: JagxColors.accent)
+                    : null,
+                onTap: () {
+                  Navigator.pop(context);
+                  if (mode.id != widget.grade.id) {
+                    widget.onGradeChanged(mode);
+                  }
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override Widget build(BuildContext context) {
     return Column(children: [Expanded(child: _messages.isEmpty ? _empty() : _list()), _composer()]);
   }
@@ -126,6 +175,35 @@ class _ChatScreenState extends State<ChatScreen> {
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
         child: Column(
           children: [
+            Row(
+              children: [
+                ActionChip(
+                  avatar: Icon(
+                    widget.webEnabled ? Icons.public : Icons.public_off,
+                    size: 17,
+                    color: widget.webEnabled
+                        ? JagxColors.accent
+                        : JagxColors.muted,
+                  ),
+                  label: Text(widget.webEnabled ? 'Web' : 'Web off'),
+                  onPressed: _busy
+                      ? null
+                      : () => widget.onWebChanged(!widget.webEnabled),
+                  backgroundColor: JagxColors.surface,
+                  labelStyle: const TextStyle(color: JagxColors.fg),
+                ),
+                const SizedBox(width: 8),
+                ActionChip(
+                  avatar: const Icon(Icons.tune, size: 17, color: JagxColors.fg),
+                  label: Text(widget.grade.label),
+                  onPressed: _busy ? null : _showModes,
+                  backgroundColor: JagxColors.surface,
+                  labelStyle: const TextStyle(color: JagxColors.fg),
+                ),
+                const Spacer(),
+              ],
+            ),
+            const SizedBox(height: 6),
             if (_attachments.isNotEmpty)
               Align(
                 alignment: Alignment.centerLeft,
@@ -161,7 +239,11 @@ class _ChatScreenState extends State<ChatScreen> {
                     foregroundColor: JagxColors.bg,
                   ),
                   icon: _busy
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
                       : const Icon(Icons.arrow_upward),
                 ),
               ],
