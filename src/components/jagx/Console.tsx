@@ -3,7 +3,8 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   ArrowUp, Camera, Globe, ImagePlus, Link2, Loader2, Mic, MicOff, Paperclip, Plus, Sparkles, Square, X,
 } from "lucide-react";
-import { sendToJagx, readAttachments, makeImage } from "@/lib/jagx.functions";
+import { sendToJagx, readAttachments, makeImage, webSearch, fetchPage } from "@/lib/jagx.functions";
+import { runAgent, type AgentStep } from "@/lib/agent";
 import { type GradeId } from "@/lib/grades";
 import type { Msg } from "@/lib/types";
 import { Markdown } from "./Markdown";
@@ -54,6 +55,7 @@ export function Console({
   const photoRef = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
+  const [agentActivity, setAgentActivity] = useState<AgentStep[]>([]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -100,7 +102,7 @@ export function Console({
     setAtts((a) => [...a, ...next].slice(0, 6));
   }
 
-  async function submit(text: string) {
+  const needsAgent = (message: string, files: Att[]) => files.length > 0 || /\b(build|create|generate|write|code|debug|fix|refactor|test|run|verify|inspect|scan|browse|research|investigate|compare|analy[sz]e|package|zip|epub|docx|pdf|rtf|txt|website|project|repo|github|supabase|deploy)\b/i.test(message);\n\n  async function submit(text: string) {
     const message = text.trim();
     if ((!message && atts.length === 0) || busy) return;
     const history = messages.filter((m) => !m.error).map((m) => ({ role: m.role, content: m.content }));
@@ -127,9 +129,15 @@ export function Console({
         augmented = `${message || "Work with the attached files."}\n\nATTACHED FILES (${files.map((f) => f.name).join(", ")}) — extracted content:\n${digest}`;
       }
 
-      const res = await chat({ data: { message: augmented, history, grade, web } });
-      setQuota(res.quota ?? "");
-      setMessages((m) => [...m, { role: "assistant", content: res.response || "(empty response)", sources: res.sources }]);
+      if (needsAgent(message, files)) {
+        setAgentActivity([]);
+        await runAgent(augmented, { chat, search: webSearch, open: fetchPage }, (step) => setAgentActivity((p) => [...p.slice(-2), step]), 10);
+        setAgentActivity((p) => { const f = [...p].reverse().find((x) => x.kind === "final"); if (f) setMessages((m) => [...m, { role: "assistant", content: f.text }]); return []; });
+      } else {
+        const res = await chat({ data: { message: augmented, history, grade, web } });
+        setQuota(res.quota ?? "");
+        setMessages((m) => [...m, { role: "assistant", content: res.response || "(empty response)", sources: res.sources }]);
+      }
     } catch (e) {
       setMessages((m) => [...m, { role: "assistant", content: e instanceof Error ? e.message : "Request failed", error: true }]);
     } finally {
@@ -148,7 +156,7 @@ export function Console({
                   Ask <span className="text-brand">JagX AI</span> anything.
                 </h2>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Thirteen intelligence modes, live web retrieval, and sandboxed code execution.
+                  One intelligent workspace with live web research, code execution, files, image generation, and autonomous tools.
                 </p>
               </div>
               <div className="grid gap-2 sm:grid-cols-2">
@@ -210,9 +218,9 @@ export function Console({
           )}
 
           {busy && (
-            <div className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-2 font-mono text-xs text-muted-foreground">
               <Loader2 className="size-3.5 animate-spin text-primary" />
-              {imgMode ? "rendering image" : web ? "retrieving live sources · reasoning" : "reasoning"}
+              {agentActivity.length ? agentActivity.filter((x) => x.kind === "action" || x.kind === "observation").slice(-2).map((x, n) => <span key={n} className="rounded-full border border-border bg-surface px-2.5 py-1">{x.kind === "action" ? x.text.split("\\n")[0].replace(/^command\\s+/i, "Running command ") : "Checking result"}</span>) : (imgMode ? "rendering image" : web ? "retrieving live sources · reasoning" : "reasoning")}
               <span className="caret">_</span>
             </div>
           )}
