@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../core/config.dart';
 import '../../core/grades.dart';
 import '../../theme/jagx_theme.dart';
 import '../chat/nexus_chat_screen.dart';
