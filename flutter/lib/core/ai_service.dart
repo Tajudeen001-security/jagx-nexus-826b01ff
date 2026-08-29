@@ -159,8 +159,7 @@ class AiService {
         result: ChatResult(
           ok: false,
           text: '',
-          error:
-              'Add OPENROUTER_API_KEY, KIMI_API_KEY, NVIDIA_API_KEY, or GROQ_API_KEY',
+          error: 'AI provider keys are not configured.',
           steps: steps,
           sources: sources,
           durationMs: DateTime.now().difference(started).inMilliseconds,
@@ -240,93 +239,112 @@ class AiService {
     List<Map<String, String>> messages,
     int maxTokens,
   ) async {
-    final p = _pickProvider();
-    return _openAi(p.$1, p.$2, p.$3, messages, maxTokens, extra: p.$4);
+    Object? lastError;
+    for (final p in _providers()) {
+      try {
+        return await _openAi(
+          p.$1,
+          p.$2,
+          p.$3,
+          messages,
+          maxTokens,
+          extra: p.$4,
+        );
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    throw Exception(lastError ?? 'All AI providers failed.');
   }
 
   Stream<String> _streamComplete(
     List<Map<String, String>> messages,
     int maxTokens,
   ) async* {
-    final p = _pickProvider();
-    final base = p.$1;
-    final key = p.$2;
-    var model = p.$3;
-    final extra = p.$4;
-
-    final client = http.Client();
-    try {
-      final req = http.Request('POST', Uri.parse('$base/chat/completions'));
-      req.headers.addAll({
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $key',
-        'Accept': 'text/event-stream',
-        ...?extra,
-      });
-      req.body = jsonEncode({
-        'model': model,
-        'messages': messages,
-        'max_tokens': maxTokens,
-        'temperature': 0.5,
-        'stream': true,
-      });
-      final streamed = await client.send(req);
-      if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
-        final body = await streamed.stream.bytesToString();
-        throw Exception('LLM ${streamed.statusCode}: $body');
+    Object? lastError;
+    for (final p in _providers()) {
+      final client = http.Client();
+      var emitted = false;
+      var model = p.$3;
+      try {
+        final req = http.Request(
+          'POST',
+          Uri.parse('${p.$1}/chat/completions'),
+        );
+        req.headers.addAll({
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${p.$2}',
+          'Accept': 'text/event-stream',
+          ...?p.$4,
+        });
+        req.body = jsonEncode({
+          'model': p.$3,
+          'messages': messages,
+          'max_tokens': maxTokens,
+          'temperature': 0.5,
+          'stream': true,
+        });
+        final streamed = await client.send(req).timeout(
+          const Duration(seconds: 45),
+        );
+        if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
+          final body = await streamed.stream.bytesToString();
+          throw Exception('LLM ${streamed.statusCode}: $body');
+        }
+        yield '__MODEL__:$model';
+        await for (final line in streamed.stream
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())) {
+          if (!line.startsWith('data:')) continue;
+          final data = line.substring(5).trim();
+          if (data == '[DONE]') break;
+          try {
+            final map = jsonDecode(data) as Map<String, dynamic>;
+            final choices = map['choices'] as List<dynamic>?;
+            if (choices == null || choices.isEmpty) continue;
+            final delta = (choices.first as Map)['delta'] as Map?;
+            final content = delta?['content'] as String?;
+            if (content != null && content.isNotEmpty) {
+              emitted = true;
+              yield content;
+            }
+            final m = map['model'] as String?;
+            if (m != null) model = m;
+          } catch (_) {}
+        }
+        return;
+      } catch (e) {
+        lastError = e;
+        if (emitted) rethrow;
+      } finally {
+        client.close();
       }
-      yield '__MODEL__:$model';
-      await for (final line in streamed.stream
-          .transform(utf8.decoder)
-          .transform(const LineSplitter())) {
-        if (!line.startsWith('data:')) continue;
-        final data = line.substring(5).trim();
-        if (data == '[DONE]') break;
-        try {
-          final map = jsonDecode(data) as Map<String, dynamic>;
-          final choices = map['choices'] as List<dynamic>?;
-          if (choices == null || choices.isEmpty) continue;
-          final delta = (choices.first as Map)['delta'] as Map?;
-          final content = delta?['content'] as String?;
-          if (content != null && content.isNotEmpty) yield content;
-          final m = map['model'] as String?;
-          if (m != null) model = m;
-        } catch (_) {}
-      }
-    } finally {
-      client.close();
     }
+    throw Exception(lastError ?? 'All AI providers failed.');
   }
 
-  (String, String, String, Map<String, String>?) _pickProvider() {
+  List<(String, String, String, Map<String, String>?)> _providers() {
+    final providers = <(String, String, String, Map<String, String>?)>[];
+    if (AppConfig.nvidiaApiKey.isNotEmpty) {
+      providers.add((
+        AppConfig.nvidiaBase,
+        AppConfig.nvidiaApiKey,
+        'nvidia/nemotron-3.5-lightning-30b-a3b',
+        null,
+      ));
+    }
     if (AppConfig.openRouterApiKey.isNotEmpty) {
-      return (
+      providers.add((
         AppConfig.openRouterBase,
         AppConfig.openRouterApiKey,
-        'moonshotai/kimi-k2:free',
+        'openrouter/free',
         {
           'HTTP-Referer': 'https://www.jagxai.name.ng',
           'X-Title': 'JagX AI',
         },
-      );
+      ));
     }
-    if (AppConfig.effectiveKimiKey.isNotEmpty) {
-      return (AppConfig.kimiBase, AppConfig.effectiveKimiKey, 'kimi-k2.6', null);
-    }
-    if (AppConfig.nvidiaApiKey.isNotEmpty) {
-      return (
-        AppConfig.nvidiaBase,
-        AppConfig.nvidiaApiKey,
-        'meta/llama-3.1-70b-instruct',
-        null,
-      );
-    }
-    return (
-      AppConfig.groqBase,
-      AppConfig.groqApiKey,
-      'llama-3.3-70b-versatile',
-      null,
-    );
+    return providers;
   }
 
   Future<(String, String)> _openAi(
