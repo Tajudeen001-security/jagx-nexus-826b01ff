@@ -1,13 +1,10 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/ai_service.dart';
 import '../../core/grades.dart';
 import '../../theme/jagx_theme.dart';
-import '../auth/auth_service.dart';
-import '../auth/login_screen.dart';
 import 'chat_models.dart';
 
 class _Attachment {
@@ -55,11 +52,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _send([String? preset]) async {
     final text = (preset ?? _input.text).trim();
     if ((text.isEmpty && _attachments.isEmpty) || _busy) return;
-    final auth = context.read<AuthService>();
-    if (auth.currentUser == null) {
-      final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const LoginScreen()));
-      if (ok != true || !mounted) return;
-    }
     final attached = List<_Attachment>.from(_attachments);
     final prompt = (text.isEmpty ? 'Please inspect the attached files.' : text) +
         (attached.isEmpty ? '' : '\n\nATTACHMENTS:\n' + attached.map((a) => '- ' + a.name + ' (' + a.type + ')').join('\n'));
