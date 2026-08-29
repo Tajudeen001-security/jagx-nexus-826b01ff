@@ -120,17 +120,55 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _composer() {
-    return SafeArea(top:false,child:Padding(padding:const EdgeInsets.fromLTRB(12,4,12,12),child:Column(children:[
-      if(_attachments.isNotEmpty) SizedBox(height:52,child:ListView.separated(scrollDirection:Axis.horizontal,itemCount:_attachments.length,separatorBuilder:(_,__)=>const SizedBox(width:8),itemBuilder:(_,i){
-        final file=_attachments[i];
-        return InputChip(avatar:Icon(file.type.startsWith('image/')?Icons.image_outlined:Icons.insert_drive_file_outlined,size:18,color:JagxColors.accent),label:SizedBox(width:130,child:Text(file.name,overflow:TextOverflow.ellipsis)),onDeleted:_busy?null:()=>setState(()=>_attachments.removeAt(i)));
-      })),
-      Row(children:[
-        IconButton(tooltip:'Attach files, images, PDFs and code',onPressed:_busy?null:_pickFiles,icon:const Icon(Icons.add_circle_outline,size:28,color:JagxColors.fg)),
-        Expanded(child:TextField(controller:_input,minLines:1,maxLines:6,decoration:const InputDecoration(hintText:'Message JagX AI',border:OutlineInputBorder(borderSide:BorderSide.none)),onSubmitted:(_)=>_send())),
-        const SizedBox(width:8),
-        IconButton.filled(onPressed:_busy?null:()=>_send(),style:IconButton.styleFrom(backgroundColor:JagxColors.fg,foregroundColor:JagxColors.bg),icon:_busy?const SizedBox(width:18,height:18,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.arrow_upward)),
-      ]),
-    ]));
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+        child: Column(
+          children: [
+            if (_attachments.isNotEmpty)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _attachments.length.toString() + ' attachment(s) ready',
+                  style: const TextStyle(color: JagxColors.muted, fontSize: 12),
+                ),
+              ),
+            Row(
+              children: [
+                IconButton(
+                  tooltip: 'Attach files, images, PDFs and code',
+                  onPressed: _busy ? null : _pickFiles,
+                  icon: const Icon(Icons.add_circle_outline, size: 28, color: JagxColors.fg),
+                ),
+                Expanded(
+                  child: TextField(
+                    controller: _input,
+                    minLines: 1,
+                    maxLines: 6,
+                    decoration: const InputDecoration(
+                      hintText: 'Message JagX AI',
+                      border: OutlineInputBorder(borderSide: BorderSide.none),
+                    ),
+                    onSubmitted: (_) => _send(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filled(
+                  onPressed: _busy ? null : () => _send(),
+                  style: IconButton.styleFrom(
+                    backgroundColor: JagxColors.fg,
+                    foregroundColor: JagxColors.bg,
+                  ),
+                  icon: _busy
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.arrow_upward),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
