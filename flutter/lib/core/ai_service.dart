@@ -325,7 +325,10 @@ class AiService {
       {
         'role': 'system',
         'content':
-            '${grade.system}\nYou are JagX AI ${AppConfig.version} by JagX & JRILICENSE.',
+            '${grade.system}\n'
+            'You are JagX AI ${AppConfig.version} by JagX & JRILICENSE. '
+            'Be accurate, practical, and natural. Do not invent facts. '
+            'When live web material is supplied, use it as evidence and cite factual claims as [n].',
       },
       ...history.take(12).map((t) => {'role': t.role, 'content': t.content}),
       {'role': 'user', 'content': message + extra},
