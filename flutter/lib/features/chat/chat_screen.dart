@@ -5,7 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:share_plus/share_plus.dart'
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/ai_service.dart';
@@ -25,12 +25,14 @@ class ChatScreen extends StatefulWidget {
   final bool webEnabled;
   final ValueChanged<Grade> onGradeChanged;
   final ValueChanged<bool> onWebChanged;
+  final bool showWebToggle;
   const ChatScreen({
     super.key,
     required this.grade,
     required this.webEnabled,
     required this.onGradeChanged,
     required this.onWebChanged,
+    this.showWebToggle = true,
   });
   @override State<ChatScreen> createState() => _ChatScreenState();
 }
