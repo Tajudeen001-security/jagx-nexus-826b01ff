@@ -71,7 +71,7 @@ class AiService {
 
     final sources = <WebSource>[];
     final directUrls = RegExp(
-      r'https?://[^\\s)]+',
+      r'https?://[^\s)]+',
       caseSensitive: false,
     ).allMatches(query).map((m) => m.group(0)!).toSet().toList();
 
@@ -107,7 +107,7 @@ class AiService {
         final blocks = res.body.split('result__body').skip(1).take(limit);
         for (final block in blocks) {
           final titleMatch = RegExp(
-            r'class="result__a"[^>]*>([\\s\\S]*?)</a>',
+            r'class="result__a"[^>]*>([\s\S]*?)</a>',
             caseSensitive: false,
           ).firstMatch(block);
           if (titleMatch == null) continue;
@@ -128,7 +128,7 @@ class AiService {
 
           final title = _cleanHtml(titleMatch.group(1) ?? '');
           final snippetMatch = RegExp(
-            r'class="result__snippet"[^>]*>([\\s\\S]*?)</',
+            r'class="result__snippet"[^>]*>([\s\S]*?)</',
             caseSensitive: false,
           ).firstMatch(block);
           final snippet = _cleanHtml(snippetMatch?.group(1) ?? '');
@@ -184,27 +184,27 @@ class AiService {
 
       final html = res.body;
       final titleMatch = RegExp(
-        r'<title[^>]*>([\\s\\S]*?)</title>',
+        r'<title[^>]*>([\s\S]*?)</title>',
         caseSensitive: false,
       ).firstMatch(html);
 
       var text = html
           .replaceAll(
-            RegExp(r'<script[\\s\\S]*?</script>', caseSensitive: false),
+            RegExp(r'<script[\s\S]*?</script>', caseSensitive: false),
             ' ',
           )
           .replaceAll(
-            RegExp(r'<style[\\s\\S]*?</style>', caseSensitive: false),
+            RegExp(r'<style[\s\S]*?</style>', caseSensitive: false),
             ' ',
           )
           .replaceAll(
-            RegExp(r'<noscript[\\s\\S]*?</noscript>', caseSensitive: false),
+            RegExp(r'<noscript[\s\S]*?</noscript>', caseSensitive: false),
             ' ',
           )
           .replaceAll(RegExp(r'<[^>]+>'), ' ');
 
       text = _decodeEntities(text)
-          .replaceAll(RegExp(r'\\s+'), ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
           .trim();
 
       if (text.isEmpty) return null;
@@ -225,7 +225,7 @@ class AiService {
   String _cleanHtml(String value) {
     return _decodeEntities(
       value.replaceAll(RegExp(r'<[^>]+>'), ' '),
-    ).replaceAll(RegExp(r'\\s+'), ' ').trim();
+    ).replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   String _decodeEntities(String value) {
@@ -298,7 +298,7 @@ class AiService {
                       ? source.snippet
                       : source.content;
                   return '[${e.key + 1}] ${source.title}\nURL: ${source.url}\n' +
-                      body.substring(0, body.length.clamp(0, 3500));
+                      body.substring(0, body.length > 3500 ? 3500 : body.length);
                 })
                 .join('\n\n');
       }
