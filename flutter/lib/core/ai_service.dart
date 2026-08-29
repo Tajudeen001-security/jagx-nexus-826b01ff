@@ -75,13 +75,16 @@ class AiService {
       caseSensitive: false,
     ).allMatches(query).map((m) => m.group(0)!).toSet().toList();
 
-    for (final url in directUrls.take(3)) {
-      final page = await _readPage(url);
+    final directPages = await Future.wait(
+      directUrls.take(3).map((url) async => (url, await _readPage(url))),
+    );
+    for (final item in directPages) {
+      final page = item.$2;
       if (page != null) {
         sources.add(
           WebSource(
             title: page.$1,
-            url: url,
+            url: item.$1,
             snippet: page.$2,
             content: page.$3,
           ),
@@ -101,7 +104,7 @@ class AiService {
           'user-agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36',
           'accept': 'text/html',
         },
-      ).timeout(const Duration(seconds: 12));
+      ).timeout(const Duration(seconds: 8));
 
       if (res.statusCode == 200) {
         final blocks = res.body.split('result__body').skip(1).take(limit);
@@ -178,7 +181,7 @@ class AiService {
           'user-agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36',
           'accept': 'text/html,application/xhtml+xml,text/plain',
         },
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 7));
 
       if (res.statusCode < 200 || res.statusCode >= 400) return null;
 
@@ -543,7 +546,7 @@ class AiService {
           'Use # for title, ## for chapters. Include a short preface.',
       history: const [],
       grade: gradeById('scholar'),
-      web: false,
+      web: true,
     );
     if (!r.ok) throw Exception(r.error ?? 'Book failed');
     return r.text;
@@ -555,7 +558,7 @@ class AiService {
           'Analyze this $language code. Report bugs, complexity, and a short improved version if needed:\n\n```$language\n$code\n```',
       history: const [],
       grade: gradeById('engineer'),
-      web: false,
+      web: true,
     );
     if (!r.ok) throw Exception(r.error ?? 'Analyze failed');
     return r.text;
