@@ -16,7 +16,15 @@ class _Attachment {
 class ChatScreen extends StatefulWidget {
   final Grade grade;
   final bool webEnabled;
-  const ChatScreen({super.key, required this.grade, required this.webEnabled});
+  final ValueChanged<Grade> onGradeChanged;
+  final ValueChanged<bool> onWebChanged;
+  const ChatScreen({
+    super.key,
+    required this.grade,
+    required this.webEnabled,
+    required this.onGradeChanged,
+    required this.onWebChanged,
+  });
   @override State<ChatScreen> createState() => _ChatScreenState();
 }
 
