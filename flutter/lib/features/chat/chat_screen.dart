@@ -164,6 +164,51 @@ class _ChatScreenState extends State<ChatScreen> {
         return Padding(padding:const EdgeInsets.only(bottom:24),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
           ...m.steps.map((s)=>Text('· '+s.label,style:const TextStyle(color:JagxColors.subtle,fontSize:11,fontFamily:'monospace'))),
           MarkdownBody(data:m.content,styleSheet:MarkdownStyleSheet(p:const TextStyle(color:JagxColors.fg,height:1.55))),
+          if (m.sources.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            const Text(
+              'SOURCES',
+              style: TextStyle(
+                color: JagxColors.subtle,
+                fontSize: 10,
+                letterSpacing: 1.4,
+                fontFamily: 'monospace',
+              ),
+            ),
+            const SizedBox(height: 4),
+            ...m.sources.map(
+              (source) => InkWell(
+                onTap: () => launchUrl(
+                  Uri.parse(source.url),
+                  mode: LaunchMode.externalApplication,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.open_in_new,
+                        size: 14,
+                        color: JagxColors.accent,
+                      ),
+                      const SizedBox(width: 7),
+                      Expanded(
+                        child: Text(
+                          source.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: JagxColors.muted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ]));
       },
     );
