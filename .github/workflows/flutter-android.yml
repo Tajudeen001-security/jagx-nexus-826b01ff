@@ -60,7 +60,6 @@ jobs:
             --dart-define=MOONSHOT_API_KEY="${MOONSHOT_API_KEY}" \
             --dart-define=NVIDIA_API_KEY="${NVIDIA_API_KEY}" \
             --dart-define=GROQ_API_KEY="${GROQ_API_KEY}" \
-            --dart-define=AUTH_BASE_URL=https://www.jagxai.name.ng
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
