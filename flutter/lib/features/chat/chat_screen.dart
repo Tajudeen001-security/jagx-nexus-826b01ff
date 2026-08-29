@@ -166,6 +166,13 @@ class _ChatScreenState extends State<ChatScreen> {
       _toolTile(Icons.description_outlined, 'Create a document', 'DOCX, PDF, EPUB, RTF or TXT', () { Navigator.pop(context); _showExportFormats(); }),
       _toolTile(Icons.picture_as_pdf_outlined, 'Create a PDF / storybook', 'Write and package a polished PDF', () { Navigator.pop(context); _input.text = 'Create a PDF storybook about '; }),
       _toolTile(Icons.folder_zip_outlined, 'Build a ZIP project', 'Generate files and package the project', () { Navigator.pop(context); _input.text = 'Create and zip a complete project for '; }),
+      const Divider(color: JagxColors.elevated, height: 22),
+      _toolTile(Icons.summarize_outlined, 'Summarize', 'Turn long text into clear key points', () { Navigator.pop(context); _input.text = 'Summarize the following clearly with key points: '; }),
+      _toolTile(Icons.translate_outlined, 'Translate', 'Translate naturally between languages', () { Navigator.pop(context); _input.text = 'Translate the following text and preserve its meaning and tone: '; }),
+      _toolTile(Icons.fact_check_outlined, 'Fact-check', 'Check claims against current web sources', () { Navigator.pop(context); _input.text = 'Fact-check the following claims using current web sources and cite the evidence: '; }),
+      _toolTile(Icons.lightbulb_outline, 'Brainstorm', 'Generate ideas, names and strategies', () { Navigator.pop(context); _input.text = 'Brainstorm strong ideas for: '; }),
+      _toolTile(Icons.school_outlined, 'Study mode', 'Explain, quiz and teach step-by-step', () { Navigator.pop(context); _input.text = 'Teach me this step-by-step, then quiz me: '; }),
+      _toolTile(Icons.code_outlined, 'Code review', 'Debug, improve and explain code', () { Navigator.pop(context); _input.text = 'Review this code, find bugs and suggest a production-ready fix: '; }),
       _toolTile(Icons.extension_outlined, 'Plugins', 'Connect GitHub, Supabase, email, APIs and more', () { Navigator.pop(context); Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PluginCenterScreen())); }),
     ])));
   }
@@ -233,7 +240,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _empty() {
-    const hints = ['Research the latest AI news and explain what matters','Generate an image of a futuristic Lagos skyline','Create a PDF storybook about a Nigerian family','Create and zip a complete Flutter app for a todo list'];
+    const hints = ['Research the latest AI news and explain what matters','Scan this website and summarize the important information: https://example.com','Create an EPUB storybook about a Nigerian family','Create a DOCX business proposal and a PDF copy','Review this code, fix the bugs and package the project as a ZIP'];
     return ListView(padding: const EdgeInsets.fromLTRB(20,48,20,20), children: [
       const Text('What can I help you build?', textAlign: TextAlign.center, style: TextStyle(fontSize:30,fontWeight:FontWeight.w700,color:JagxColors.fg)),
       const SizedBox(height:10),
