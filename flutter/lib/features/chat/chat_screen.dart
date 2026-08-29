@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:archive/archive.dart';
@@ -71,6 +72,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   bool _looksLikeImage(String text) => RegExp(r'\b(generate|create|draw|make|design)\b[\s\S]*\b(image|picture|logo|poster|illustration|wallpaper)\b', caseSensitive: false).hasMatch(text);
   bool _looksLikePdf(String text) => RegExp(r'\b(create|make|generate|write|turn)\b[\s\S]*\b(pdf|ebook|e-book|story book|storybook|book|document)\b', caseSensitive: false).hasMatch(text);
+  String? _requestedFormat(String text) { final lower=text.toLowerCase(); for(final f in const ['docx','epub','rtf','txt','pdf']) { if(RegExp(r'\\b'+f+r'\\b').hasMatch(lower)) return f; } return null; }
   bool _looksLikeZip(String text) => RegExp(r'\b(create|make|generate|package|zip|bundle|build)\b[\s\S]*\b(zip|project|files|codebase|app|website)\b', caseSensitive: false).hasMatch(text);
 
   Future<void> _send([String? preset]) async {
@@ -83,6 +85,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final ticker = Stream.periodic(const Duration(milliseconds: 700)).listen((_) { if (!mounted || !_busy) return; setState(() { _liveIdx = (_liveIdx + 1) % _liveSteps.length; _live = _liveSteps[_liveIdx]; }); });
     try {
       if (_looksLikeImage(text)) { final url = await AiService().generateImageUrl(text); await ticker.cancel(); if (!mounted) return; _finish(pendingId, 'Generated image for your request.', imageUrl: url, model: 'image'); return; }
+      final format = _requestedFormat(text);
+      if (format != null) { final result = await AiService(onStep:(s){if(mounted)setState(()=>_live=s.label);}).chat(message:'Create complete content for this '+format.toUpperCase()+' request: '+text,history:const [],grade:gradeById('scholar'),web:true); if(!result.ok) throw Exception(result.error??'Document generation failed'); final artifact=await _writeDocument(result.text,format); await ticker.cancel(); if(!mounted)return; _finish(pendingId,'Your '+format.toUpperCase()+' file is ready.',filePath:artifact.$1,fileType:format,model:'document'); return; }
       if (_looksLikePdf(text)) { final markdown = await AiService(onStep: (s) { if (mounted) setState(() => _live = s.label); }).generateBook(topic: text, chapters: 6); final path = await _writePdf(markdown); await ticker.cancel(); if (!mounted) return; _finish(pendingId, 'Your PDF is ready. I created a formatted document from the generated content.', filePath: path, fileType: 'pdf', model: 'document'); return; }
       if (_looksLikeZip(text)) { final artifact = await _createProjectZip(text); await ticker.cancel(); if (!mounted) return; _finish(pendingId, artifact.$2, filePath: artifact.$1, fileType: 'zip', model: 'code'); return; }
       final history = _messages.where((m) => !m.pending && m.content.isNotEmpty).take(_messages.length - 2).map((m) => ChatTurn(role: m.role, content: m.content)).toList();
@@ -97,6 +101,32 @@ class _ChatScreenState extends State<ChatScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) { if (_scroll.hasClients) _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 220), curve: Curves.easeOut); });
   }
 
+  String _safeName(String title, String ext) {
+    final safe=title.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-').replaceAll(RegExp(r'^-+|-+$'), '');
+    return (safe.isEmpty?'jagx-document':safe)+'.'+ext;
+  }
+  String _xmlEscape(String v)=>v.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&apos;');
+  List<String> _paragraphs(String md)=>md.replaceAll(RegExp(r'```[\s\S]*?```'),'').split(RegExp(r'\n{2,}')).map((p)=>p.trim().replaceFirst(RegExp(r'^#{1,6}\s*'),'')).where((p)=>p.isNotEmpty).toList();
+  Future<(String,String)> _writeDocument(String content,String format) async {
+    final title=_titleFromMarkdown(content); final dir=await getTemporaryDirectory(); final name=_safeName(title,format); final file=File(dir.path+'/'+name);
+    if(format=='txt'){await file.writeAsString(content,encoding:utf8,flush:true);return(file.path,name);}
+    final ps=_paragraphs(content);
+    if(format=='rtf'){final out=StringBuffer(r'{\rtf1\ansi\deff0 ');for(final p in ps){out.write(p.replaceAll(r'\',r'\\').replaceAll('{',r'\{').replaceAll('}',r'\}')+r'\par ');}out.write('}');await file.writeAsString(out.toString(),encoding:utf8,flush:true);return(file.path,name);}
+    final a=Archive();
+    if(format=='docx'){
+      final body=StringBuffer('<w:body>');for(final p in ps){body.write('<w:p><w:r><w:t xml:space="preserve">'+_xmlEscape(p)+'</w:t></w:r></w:p>');}body.write('<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body>');
+      final files={'[Content_Types].xml':'<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>','_rels/.rels':'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>','word/_rels/document.xml.rels':'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>','word/document.xml':'<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'+body.toString()+'</w:document>'};
+      for(final e in files.entries){final b=utf8.encode(e.value);a.addFile(ArchiveFile(e.key,b.length,b));} final z=ZipEncoder().encode(a);await file.writeAsBytes(z,flush:true);return(file.path,name);
+    }
+    if(format=='epub'){
+      final m=utf8.encode('application/epub+zip');a.addFile(ArchiveFile('mimetype',m.length,m));
+      final c=utf8.encode('<?xml version="1.0" encoding="UTF-8"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>');a.addFile(ArchiveFile('META-INF/container.xml',c.length,c));
+      final h='<html xmlns="http://www.w3.org/1999/xhtml"><head><title>'+_xmlEscape(title)+'</title></head><body><h1>'+_xmlEscape(title)+'</h1>'+ps.map((p)=>'<p>'+_xmlEscape(p)+'</p>').join()+'</body></html>';
+      final o='<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" unique-identifier="id" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:'+_uuid.v4()+'</dc:identifier><dc:title>'+_xmlEscape(title)+'</dc:title><dc:language>en</dc:language></metadata><manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="chapter"/></spine></package>';
+      final hb=utf8.encode(h),ob=utf8.encode(o);a.addFile(ArchiveFile('OEBPS/chapter.xhtml',hb.length,hb));a.addFile(ArchiveFile('OEBPS/content.opf',ob.length,ob));final z=ZipEncoder().encode(a);await file.writeAsBytes(z,flush:true);return(file.path,name);
+    }
+    final p=await _writePdf(content);return(p,_safeName(title,'pdf'));
+  }
   Future<String> _writePdf(String markdown) async {
     final title = _titleFromMarkdown(markdown);
     final doc = pw.Document();
@@ -133,12 +163,21 @@ class _ChatScreenState extends State<ChatScreen> {
       const SizedBox(height: 14),
       _toolTile(Icons.public, 'Web research', 'Search and read live sources', () { Navigator.pop(context); _input.text = 'Research '; }),
       _toolTile(Icons.image_outlined, 'Generate an image', 'Create artwork, logos and illustrations', () { Navigator.pop(context); _input.text = 'Generate an image of '; }),
+      _toolTile(Icons.description_outlined, 'Create a document', 'DOCX, PDF, EPUB, RTF or TXT', () { Navigator.pop(context); _showExportFormats(); }),
       _toolTile(Icons.picture_as_pdf_outlined, 'Create a PDF / storybook', 'Write and package a polished PDF', () { Navigator.pop(context); _input.text = 'Create a PDF storybook about '; }),
       _toolTile(Icons.folder_zip_outlined, 'Build a ZIP project', 'Generate files and package the project', () { Navigator.pop(context); _input.text = 'Create and zip a complete project for '; }),
       _toolTile(Icons.extension_outlined, 'Plugins', 'Connect GitHub, Supabase, email, APIs and more', () { Navigator.pop(context); Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PluginCenterScreen())); }),
     ])));
   }
 
+  void _showExportFormats(){
+    final formats={'DOCX':'Create a DOCX document about ','PDF':'Create a PDF document about ','EPUB':'Create an EPUB ebook about ','RTF':'Create an RTF document about ','TXT':'Create a TXT text file about '};
+    showModalBottomSheet<void>(context:context,backgroundColor:JagxColors.surface,showDragHandle:true,builder:(_)=>SafeArea(child:ListView(shrinkWrap:true,padding:const EdgeInsets.fromLTRB(20,6,20,28),children:[
+      const Text('Export format',style:TextStyle(color:JagxColors.fg,fontSize:22,fontWeight:FontWeight.w700)),
+      const SizedBox(height:8),const Text('Generate a real file and share it from the chat.',style:TextStyle(color:JagxColors.muted)),
+      ...formats.entries.map((e)=>ListTile(leading:const Icon(Icons.insert_drive_file_outlined,color:JagxColors.fg),title:Text(e.key,style:const TextStyle(color:JagxColors.fg,fontWeight:FontWeight.w600)),subtitle:Text('Create a .'+e.key.toLowerCase()+' file',style:const TextStyle(color:JagxColors.muted)),onTap:(){Navigator.pop(context);_input.text=e.value;_input.selection=TextSelection.collapsed(offset:_input.text.length);}))
+    ])));
+  }
   Widget _toolTile(IconData icon, String title, String subtitle, VoidCallback onTap) => ListTile(contentPadding: const EdgeInsets.symmetric(vertical: 5), leading: CircleAvatar(backgroundColor: JagxColors.elevated, child: Icon(icon, color: JagxColors.fg)), title: Text(title, style: const TextStyle(color: JagxColors.fg, fontWeight: FontWeight.w600)), subtitle: Text(subtitle, style: const TextStyle(color: JagxColors.muted)), onTap: onTap);
   void _showModes() {
     showModalBottomSheet<void>(
@@ -218,7 +257,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ...m.steps.map((s)=>Text('· '+s.label,style:const TextStyle(color:JagxColors.subtle,fontSize:11,fontFamily:'monospace'))),
           MarkdownBody(data:m.content,styleSheet:MarkdownStyleSheet(p:const TextStyle(color:JagxColors.fg,height:1.58,fontSize:15),h1:const TextStyle(color:JagxColors.fg,fontSize:25,fontWeight:FontWeight.w700),h2:const TextStyle(color:JagxColors.fg,fontSize:20,fontWeight:FontWeight.w700),code:const TextStyle(color:JagxColors.fg,fontFamily:'monospace'))),
           if (m.imageUrl != null) Padding(padding: const EdgeInsets.only(top: 12), child: ClipRRect(borderRadius: BorderRadius.circular(18), child: Image.network(m.imageUrl!, fit: BoxFit.cover))),
-          if (m.filePath != null) Padding(padding: const EdgeInsets.only(top: 12), child: Row(children: [FilledButton.icon(onPressed: () => Share.shareXFiles([XFile(m.filePath!)], subject: 'JagX AI'), icon: const Icon(Icons.ios_share, size: 17), label: Text(m.fileType == 'pdf' ? 'Share PDF' : 'Share ZIP')), if (m.fileType == 'pdf') const SizedBox(width: 8), if (m.fileType == 'pdf') OutlinedButton(onPressed: () async { final bytes = await File(m.filePath!).readAsBytes(); await Printing.sharePdf(bytes: bytes, filename: 'jagx-document.pdf'); }, child: const Text('Open / print'))])),
+          if (m.filePath != null) Padding(padding: const EdgeInsets.only(top: 12), child: Row(children: [FilledButton.icon(onPressed: () => Share.shareXFiles([XFile(m.filePath!)], subject: 'JagX AI'), icon: const Icon(Icons.ios_share, size: 17), label: Text('Share ' + (m.fileType ?? 'file').toUpperCase())), if (m.fileType == 'pdf') const SizedBox(width: 8), if (m.fileType == 'pdf') OutlinedButton(onPressed: () async { final bytes = await File(m.filePath!).readAsBytes(); await Printing.sharePdf(bytes: bytes, filename: 'jagx-document.pdf'); }, child: const Text('Open / print'))])),
           if (m.sources.isNotEmpty) ...[
             const SizedBox(height: 12),
             const Text(
