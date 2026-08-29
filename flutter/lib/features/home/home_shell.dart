@@ -21,7 +21,7 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
-      ChatScreen(grade: _grade, webEnabled: _web),
+      ChatScreen(\n        grade: _grade,\n        webEnabled: _web,\n        onGradeChanged: (grade) => setState(() => _grade = grade),\n        onWebChanged: (enabled) => setState(() => _web = enabled),\n      ),
       const CodeLabScreen(),
       const BookStudioScreen(),
       const ImageStudioScreen(),
@@ -38,34 +38,13 @@ class _HomeShellState extends State<HomeShell> {
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: JagxColors.fg),
             ),
             Text(
-              'v' + AppConfig.version + ' · ' + _grade.label,
+              'v' + AppConfig.version,
               style: const TextStyle(fontSize: 10, letterSpacing: 1.6, color: JagxColors.subtle, fontFamily: 'monospace'),
             ),
           ],
         ),
         actions: [
-          if (_tab == 0)
-            IconButton(
-              tooltip: _web ? 'Live web on' : 'Live web off',
-              onPressed: () => setState(() => _web = !_web),
-              icon: Icon(Icons.public, color: _web ? JagxColors.accent : JagxColors.subtle),
-            ),
-          if (_tab == 0)
-            PopupMenuButton<String>(
-              color: JagxColors.surface,
-              onSelected: (id) => setState(() => _grade = gradeById(id)),
-              itemBuilder: (context) => [
-                for (final g in grades)
-                  PopupMenuItem<String>(
-                    value: g.id,
-                    child: Text(g.label + ' — ' + g.blurb),
-                  ),
-              ],
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8),
-                child: Icon(Icons.tune, color: JagxColors.muted),
-              ),
-            ),
+
           PopupMenuButton<String>(
             color: JagxColors.surface,
             onSelected: (value) async {
