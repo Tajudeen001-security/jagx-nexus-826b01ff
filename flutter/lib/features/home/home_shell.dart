@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../../core/config.dart';
 import '../../core/grades.dart';
 import '../../theme/jagx_theme.dart';
-import '../auth/auth_service.dart';
-import '../auth/login_screen.dart';
 import '../books/book_studio_screen.dart';
 import '../chat/chat_screen.dart';
 import '../code/code_lab_screen.dart';
@@ -23,7 +20,6 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthService>();
     final pages = <Widget>[
       ChatScreen(grade: _grade, webEnabled: _web),
       const CodeLabScreen(),
@@ -77,18 +73,10 @@ class _HomeShellState extends State<HomeShell> {
                 await Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const DeveloperKeysScreen()),
                 );
-              } else if (auth.currentUser == null) {
-                await Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                );
-              } else {
-                await auth.signOut();
               }
-              if (mounted) setState(() {});
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'developer', child: Text('Developer API')),
-              PopupMenuItem(value: 'account', child: Text('Account')),
             ],
             child: const Padding(
               padding: EdgeInsets.symmetric(horizontal: 8),
