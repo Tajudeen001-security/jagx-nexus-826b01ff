@@ -23,11 +23,29 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
+
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+
+      - name: Repair escaped newlines from generated source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('src/components/jagx/Console.tsx')
+          text = path.read_text()
+          broken = r';\n\n  async function submit'
+          fixed = ';\n\n  async function submit'
+          if broken in text:
+              path.write_text(text.replace(broken, fixed, 1))
+              print('Repaired Console.tsx escaped newlines')
+          else:
+              print('No generated escaped-newline defect found')
+          PY
+
       - name: Production build
         run: npm run build
