@@ -15,7 +15,14 @@ class WebSource {
   final String title;
   final String url;
   final String snippet;
-  const WebSource({required this.title, required this.url, required this.snippet});
+  final String content;
+
+  const WebSource({
+    required this.title,
+    required this.url,
+    required this.snippet,
+    this.content = '',
+  });
 }
 
 class ChatTurn {
@@ -59,38 +66,176 @@ class AiService {
     onStep?.call(ActivityStep(id: id, label: label, detail: detail));
   }
 
-  Future<List<WebSource>> searchWeb(String query, {int limit = 5}) async {
+  Future<List<WebSource>> searchWeb(String query, {int limit = 4}) async {
     _step('search', 'Searching the live web');
-    try {
-      final uri = Uri.parse(
-          'https://html.duckduckgo.com/html/?q=${Uri.encodeComponent(query)}');
-      final res = await http.get(uri, headers: {
-        'user-agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36',
-        'accept': 'text/html',
-      });
-      if (res.statusCode != 200) return [];
-      final out = <WebSource>[];
-      final blocks = res.body.split('result__body').skip(1).take(limit);
-      for (final b in blocks) {
-        final titleMatch =
-            RegExp(r'class="result__a"[^>]*>([\s\S]*?)</a>').firstMatch(b);
-        final hrefMatch =
-            RegExp(r'href="([^"]+)"').firstMatch(titleMatch?.group(0) ?? '');
-        if (titleMatch == null || hrefMatch == null) continue;
-        var url = (hrefMatch.group(1) ?? '').replaceAll(RegExp(r'<[^>]*>'), '');
-        final uddg = RegExp(r'uddg=([^&]+)').firstMatch(url);
-        if (uddg != null) url = Uri.decodeComponent(uddg.group(1)!);
-        if (url.startsWith('//')) url = 'https:$url';
-        out.add(WebSource(
-          title: titleMatch.group(1)!.replaceAll(RegExp(r'<[^>]*>'), '').trim(),
-          url: url,
-          snippet: '',
-        ));
+
+    final sources = <WebSource>[];
+    final directUrls = RegExp(
+      r'https?://[^\\s)]+',
+      caseSensitive: false,
+    ).allMatches(query).map((m) => m.group(0)!).toSet().toList();
+
+    for (final url in directUrls.take(3)) {
+      final page = await _readPage(url);
+      if (page != null) {
+        sources.add(
+          WebSource(
+            title: page.$1,
+            url: url,
+            snippet: page.$2,
+            content: page.$3,
+          ),
+        );
       }
-      return out;
-    } catch (_) {
-      return [];
     }
+
+    try {
+      final uri = Uri.https(
+        'html.duckduckgo.com',
+        '/html/',
+        {'q': query},
+      );
+      final res = await http.get(
+        uri,
+        headers: {
+          'user-agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36',
+          'accept': 'text/html',
+        },
+      ).timeout(const Duration(seconds: 12));
+
+      if (res.statusCode == 200) {
+        final blocks = res.body.split('result__body').skip(1).take(limit);
+        for (final block in blocks) {
+          final titleMatch = RegExp(
+            r'class="result__a"[^>]*>([\\s\\S]*?)</a>',
+            caseSensitive: false,
+          ).firstMatch(block);
+          if (titleMatch == null) continue;
+
+          final hrefMatch = RegExp(
+            r'href="([^"]+)"',
+            caseSensitive: false,
+          ).firstMatch(titleMatch.group(0)!);
+          if (hrefMatch == null) continue;
+
+          var url = hrefMatch.group(1) ?? '';
+          final uddg = RegExp(r'uddg=([^&]+)').firstMatch(url);
+          if (uddg != null) {
+            url = Uri.decodeComponent(uddg.group(1)!);
+          }
+          if (url.startsWith('//')) url = 'https:' + url;
+          if (!url.startsWith('http')) continue;
+
+          final title = _cleanHtml(titleMatch.group(1) ?? '');
+          final snippetMatch = RegExp(
+            r'class="result__snippet"[^>]*>([\\s\\S]*?)</',
+            caseSensitive: false,
+          ).firstMatch(block);
+          final snippet = _cleanHtml(snippetMatch?.group(1) ?? '');
+
+          sources.add(
+            WebSource(
+              title: title.isEmpty ? url : title,
+              url: url,
+              snippet: snippet,
+            ),
+          );
+        }
+      }
+    } catch (_) {
+      // Keep direct URL results when the search engine is unavailable.
+    }
+
+    final unique = <String, WebSource>{};
+    for (final source in sources) {
+      unique[source.url] = source;
+    }
+
+    final selected = unique.values.take(limit).toList();
+    if (selected.isEmpty) return const [];
+
+    _step('read', 'Reading sources');
+    return Future.wait(
+      selected.map((source) async {
+        if (source.content.isNotEmpty) return source;
+        final page = await _readPage(source.url);
+        if (page == null) return source;
+        return WebSource(
+          title: source.title.isEmpty ? page.$1 : source.title,
+          url: source.url,
+          snippet: source.snippet.isEmpty ? page.$2 : source.snippet,
+          content: page.$3,
+        );
+      }),
+    );
+  }
+
+  Future<(String, String, String)?> _readPage(String url) async {
+    try {
+      final res = await http.get(
+        Uri.parse(url),
+        headers: {
+          'user-agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36',
+          'accept': 'text/html,application/xhtml+xml,text/plain',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (res.statusCode < 200 || res.statusCode >= 400) return null;
+
+      final html = res.body;
+      final titleMatch = RegExp(
+        r'<title[^>]*>([\\s\\S]*?)</title>',
+        caseSensitive: false,
+      ).firstMatch(html);
+
+      var text = html
+          .replaceAll(
+            RegExp(r'<script[\\s\\S]*?</script>', caseSensitive: false),
+            ' ',
+          )
+          .replaceAll(
+            RegExp(r'<style[\\s\\S]*?</style>', caseSensitive: false),
+            ' ',
+          )
+          .replaceAll(
+            RegExp(r'<noscript[\\s\\S]*?</noscript>', caseSensitive: false),
+            ' ',
+          )
+          .replaceAll(RegExp(r'<[^>]+>'), ' ');
+
+      text = _decodeEntities(text)
+          .replaceAll(RegExp(r'\\s+'), ' ')
+          .trim();
+
+      if (text.isEmpty) return null;
+      if (text.length > 3500) text = text.substring(0, 3500);
+
+      final title = _cleanHtml(titleMatch?.group(1) ?? '');
+      final snippet = text.length > 320 ? text.substring(0, 320) : text;
+      return (
+        title.isEmpty ? url : title,
+        snippet,
+        text,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _cleanHtml(String value) {
+    return _decodeEntities(
+      value.replaceAll(RegExp(r'<[^>]+>'), ' '),
+    ).replaceAll(RegExp(r'\\s+'), ' ').trim();
+  }
+
+  String _decodeEntities(String value) {
+    return value
+        .replaceAll('&amp;', '&')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&nbsp;', ' ');
   }
 
   Future<ChatResult> chat({
@@ -143,12 +288,19 @@ class AiService {
       if (sources.isNotEmpty) {
         yield StreamChunk(
             step: push('read', 'Opening top source', sources.first.title));
-        extra = '\n\nLIVE WEB:\n' +
+        extra = '\n\nLIVE WEB RESEARCH:\n' +
             sources
                 .asMap()
                 .entries
-                .map((e) => '[${e.key + 1}] ${e.value.title}\n${e.value.url}')
-                .join('\n');
+                .map((e) {
+                  final source = e.value;
+                  final body = source.content.isEmpty
+                      ? source.snippet
+                      : source.content;
+                  return '[${e.key + 1}] ${source.title}\nURL: ${source.url}\n' +
+                      body.substring(0, body.length.clamp(0, 3500));
+                })
+                .join('\n\n');
       }
     }
     yield StreamChunk(step: push('compose', 'Writing answer'));
