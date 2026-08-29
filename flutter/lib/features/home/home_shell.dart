@@ -21,7 +21,12 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
-      ChatScreen(\n        grade: _grade,\n        webEnabled: _web,\n        onGradeChanged: (grade) => setState(() => _grade = grade),\n        onWebChanged: (enabled) => setState(() => _web = enabled),\n      ),
+      ChatScreen(
+        grade: _grade,
+        webEnabled: _web,
+        onGradeChanged: (grade) => setState(() => _grade = grade),
+        onWebChanged: (enabled) => setState(() => _web = enabled),
+      ),
       const CodeLabScreen(),
       const BookStudioScreen(),
       const ImageStudioScreen(),
