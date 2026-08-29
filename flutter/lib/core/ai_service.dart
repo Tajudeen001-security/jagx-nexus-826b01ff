@@ -59,6 +59,9 @@ class StreamChunk {
 }
 
 class AiService {
+  static final http.Client _client = http.Client();
+  static final Map<String, (DateTime, List<WebSource>)> _webCache = {};
+  static const Duration _webCacheTtl = Duration(minutes: 3);
   final void Function(ActivityStep step)? onStep;
   AiService({this.onStep});
 
@@ -67,6 +70,12 @@ class AiService {
   }
 
   Future<List<WebSource>> searchWeb(String query, {int limit = 4}) async {
+    final cacheKey = query.trim().toLowerCase();
+    final cached = _webCache[cacheKey];
+    if (cached != null && DateTime.now().difference(cached.$1) < _webCacheTtl) {
+      _step('cache', 'Using fresh web results');
+      return cached.$2.take(limit).toList();
+    }
     _step('search', 'Searching the live web');
 
     final sources = <WebSource>[];
@@ -158,7 +167,7 @@ class AiService {
     if (selected.isEmpty) return const [];
 
     _step('read', 'Reading sources');
-    return Future.wait(
+    final result = await Future.wait(
       selected.map((source) async {
         if (source.content.isNotEmpty) return source;
         final page = await _readPage(source.url);
@@ -171,6 +180,8 @@ class AiService {
         );
       }),
     );
+    _webCache[cacheKey] = (DateTime.now(), result);
+    return result;
   }
 
   Future<(String, String, String)?> _readPage(String url) async {
@@ -282,10 +293,11 @@ class AiService {
     yield StreamChunk(step: push('think', 'Reading the request'));
     var sources = <WebSource>[];
     var extra = '';
-    if (web ||
-        RegExp(r'\b(today|latest|news|search|web|google)\b',
-                caseSensitive: false)
-            .hasMatch(message)) {
+    final webIntent = RegExp(
+      r'https?://|\b(today|latest|current|news|research|search|web|source|sources|cite|citation|verify|fact[- ]?check|price|weather|score|schedule|release|version|compare|who is)\b',
+      caseSensitive: false,
+    ).hasMatch(message);
+    if (web && webIntent) {
       yield StreamChunk(step: push('search', 'Searching the live web'));
       sources = await searchWeb(message);
       if (sources.isNotEmpty) {
@@ -333,7 +345,7 @@ class AiService {
             'Be accurate, practical, and natural. Do not invent facts. '
             'When live web material is supplied, use it as evidence and cite factual claims as [n].',
       },
-      ...history.take(12).map((t) => {'role': t.role, 'content': t.content}),
+      ...history.take(8).map((t) => {'role': t.role, 'content': t.content.length > 6000 ? t.content.substring(t.content.length - 6000) : t.content}),
       {'role': 'user', 'content': message + extra},
     ];
 
@@ -443,7 +455,7 @@ class AiService {
           'stream': true,
         });
         final streamed = await client.send(req).timeout(
-          const Duration(seconds: 45),
+          const Duration(seconds: 30),
         );
         if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
           final body = await streamed.stream.bytesToString();
@@ -513,7 +525,7 @@ class AiService {
     int maxTokens, {
     Map<String, String>? extra,
   }) async {
-    final res = await http.post(
+    final res = await _client.post(
       Uri.parse('$base/chat/completions'),
       headers: {
         'Content-Type': 'application/json',
