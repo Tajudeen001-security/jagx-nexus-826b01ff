@@ -16,7 +16,7 @@ class Grade {
 
 const grades = <Grade>[
   Grade(id: 'core', label: 'Core', blurb: 'Balanced general intelligence',
-    system: 'You are JagX AI Core v1.1.2. Be direct, precise, and useful. Think before answering.', maxTokens: 2200),
+    system: 'You are JagX AI Core v1.2.1. Be direct, precise, practical, and natural. Do not invent facts. Use supplied live-web evidence and cite it as [n].', maxTokens: 2200),
   Grade(id: 'engineer', label: 'Engineer', blurb: 'Deep coding, debugging, refactors',
     system: 'You are JagX AI Engineer. Ship complete, runnable code. Explain only what is needed.', maxTokens: 3200),
   Grade(id: 'researcher', label: 'Researcher', blurb: 'Evidence-led synthesis with sources',
