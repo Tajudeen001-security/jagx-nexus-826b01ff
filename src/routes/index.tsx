@@ -1,10 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { MessageSquare, TerminalSquare, Smartphone } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 import logo from "@/assets/jagx-logo.png";
 import { Console } from "@/components/jagx/Console";
-import { Terminal } from "@/components/jagx/Terminal";
-import { DevicePanel } from "@/components/jagx/DevicePanel";
 import { Sidebar } from "@/components/jagx/Sidebar";
 import type { GradeId } from "@/lib/grades";
 import type { Msg, ChatSession } from "@/lib/types";
@@ -31,14 +29,10 @@ export const Route = createFileRoute("/")({
   component: Home,
 });
 
-const TABS = [
-  { id: "console", label: "Console", icon: MessageSquare },
-  { id: "terminal", label: "Terminal", icon: TerminalSquare },
-  { id: "device", label: "Device", icon: Smartphone },
-] as const;
+const TABS = [{ id: "console", label: "Ask", icon: MessageSquare }] as const;
 
 function Home() {
-  const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("console");
+  const [tab] = useState<(typeof TABS)[number]["id"]>("console");
   const [grade, setGrade] = useState<GradeId>("core");
   const [sessionId, setSessionId] = useState<string>(() => newSessionId());
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -115,12 +109,7 @@ function Home() {
         {tab === "console" && (
           <Console grade={grade} onGrade={setGrade} messages={messages} setMessages={setMessages} />
         )}
-        {tab === "terminal" && <Terminal />}
-        {tab === "device" && (
-          <div className="h-full overflow-y-auto">
-            <DevicePanel />
-          </div>
-        )}
+
       </main>
     </div>
   );
