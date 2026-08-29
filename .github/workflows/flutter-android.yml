@@ -1,0 +1,77 @@
+name: Build JagX AI Android
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'flutter/**'
+      - '.github/workflows/flutter-android.yml'
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flutter
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: stable
+          cache: true
+
+      - name: Generate launcher icons from SVG
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick
+          mkdir -p android/app/src/main/res/mipmap-mdpi \
+                   android/app/src/main/res/mipmap-hdpi \
+                   android/app/src/main/res/mipmap-xhdpi \
+                   android/app/src/main/res/mipmap-xxhdpi \
+                   android/app/src/main/res/mipmap-xxxhdpi
+          convert -background none assets/icon.svg -resize 48x48 android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+          convert -background none assets/icon.svg -resize 72x72 android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+          convert -background none assets/icon.svg -resize 96x96 android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+          convert -background none assets/icon.svg -resize 144x144 android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+          convert -background none assets/icon.svg -resize 192x192 android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          convert -background none assets/icon.svg -resize 1024x1024 assets/app_icon.png
+
+      - name: Pub get
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos || true
+
+      - name: Build release APK
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          flutter build apk --release \
+            --dart-define=OPENROUTER_API_KEY=${OPENROUTER_API_KEY} \
+            --dart-define=KIMI_API_KEY=${KIMI_API_KEY} \
+            --dart-define=MOONSHOT_API_KEY=${MOONSHOT_API_KEY} \
+            --dart-define=NVIDIA_API_KEY=${NVIDIA_API_KEY} \
+            --dart-define=GROQ_API_KEY=${GROQ_API_KEY} \
+            --dart-define=AUTH_BASE_URL=https://www.jagxai.name.ng
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: jagx-ai-apk
+          path: flutter/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 14
