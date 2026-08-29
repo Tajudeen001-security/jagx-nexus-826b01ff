@@ -46,6 +46,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _google() async {
     setState(() { _busy = true; _error = null; });
     try {
+      // Google Sign-In is optional; email auth remains the default path.
       final account = await GoogleSignIn(scopes: ['email', 'profile']).signIn();
       if (account == null) { setState(() => _busy = false); return; }
       final ga = await account.authentication;
