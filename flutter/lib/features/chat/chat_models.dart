@@ -9,6 +9,9 @@ class ChatMessage {
   final int? durationMs;
   final String? model;
   final bool pending;
+  final String? imageUrl;
+  final String? filePath;
+  final String? fileType;
 
   const ChatMessage({
     required this.id,
@@ -19,5 +22,8 @@ class ChatMessage {
     this.durationMs,
     this.model,
     this.pending = false,
+    this.imageUrl,
+    this.filePath,
+    this.fileType,
   });
 }
