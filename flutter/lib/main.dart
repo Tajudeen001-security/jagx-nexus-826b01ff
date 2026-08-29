@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
-
-import 'features/auth/auth_service.dart';
 import 'features/home/home_shell.dart';
 import 'theme/jagx_theme.dart';
 
@@ -15,26 +12,19 @@ Future<void> main() async {
       systemNavigationBarColor: JagxColors.bg,
     ),
   );
-  final auth = AuthService();
-  await auth.restore();
-  runApp(JagxApp(auth: auth));
+  runApp(const JagxApp());
 }
 
 class JagxApp extends StatelessWidget {
-  final AuthService auth;
-
-  const JagxApp({super.key, required this.auth});
+  const JagxApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider<AuthService>.value(
-      value: auth,
-      child: MaterialApp(
-        title: 'JagX AI',
-        debugShowCheckedModeBanner: false,
-        theme: JagxTheme.dark(),
-        home: const HomeShell(),
-      ),
+    return MaterialApp(
+      title: 'JagX AI',
+      debugShowCheckedModeBanner: false,
+      theme: JagxTheme.dark(),
+      home: const HomeShell(),
     );
   }
 }
