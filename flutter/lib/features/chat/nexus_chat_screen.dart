@@ -104,19 +104,21 @@ class _NexusChatScreenState extends State<NexusChatScreen> {
         'content': text.isEmpty ? 'Inspect the attached files.' : text,
         'files': files,
       });
+      messages.add({
+        'role': 'assistant',
+        'content': '',
+        'model': 'JagX AI',
+      });
       busy = true;
-      status = 'Working…';
+      status = 'Connecting…';
     });
 
     try {
-      final imageFiles = files
-          .where((file) => file.mime.startsWith('image/'))
-          .toList();
+      final imageFiles =
+          files.where((file) => file.mime.startsWith('image/')).toList();
 
       if (imageFiles.isNotEmpty) {
-        status = 'Reading the image…';
-        if (mounted) setState(() {});
-
+        setState(() => status = 'Reading the image…');
         final image = imageFiles.first;
         final answer = await VisionService.analyze(
           bytes: image.bytes,
@@ -125,14 +127,10 @@ class _NexusChatScreenState extends State<NexusChatScreen> {
               ? 'Read and explain this image in detail, including visible text.'
               : text,
         );
-
         if (!mounted) return;
         setState(() {
-          messages.add({
-            'role': 'assistant',
-            'content': answer,
-            'model': 'Vision',
-          });
+          messages.last['content'] = answer;
+          messages.last['model'] = 'Vision';
           busy = false;
           status = '';
         });
@@ -149,35 +147,43 @@ class _NexusChatScreenState extends State<NexusChatScreen> {
         return '\nATTACHED FILE: ${file.name} (${file.mime})';
       }).join();
 
-      final prompt = '${text.isEmpty ? 'Inspect the attached files.' : text}'
-          '$fileContext';
+      final prompt =
+          '${text.isEmpty ? 'Inspect the attached files.' : text}$fileContext';
+      final buffer = StringBuffer();
 
-      final result = await FastAiService.complete(
+      await for (final event in FastAiService.stream(
         message: prompt,
         history: history,
         coding: _isCoding,
-        onProgress: (progress) {
-          if (mounted) setState(() => status = progress);
-        },
-      );
+        maxTokens: widget.grade.maxTokens.clamp(400, 1800),
+      )) {
+        if (!mounted) return;
+        if (event.status != null) {
+          setState(() => status = event.status!);
+        }
+        if (event.delta != null) {
+          buffer.write(event.delta);
+          setState(() => messages.last['content'] = buffer.toString());
+        }
+        if (event.result != null) {
+          setState(() {
+            messages.last['content'] = event.result!.text;
+            messages.last['model'] =
+                '${event.result!.provider} • ${event.result!.model} • ${event.result!.durationMs} ms';
+          });
+        }
+      }
 
       if (!mounted) return;
       setState(() {
-        messages.add({
-          'role': 'assistant',
-          'content': result.text,
-          'model': '${result.provider} • ${result.model}',
-        });
         busy = false;
         status = '';
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        messages.add({
-          'role': 'assistant',
-          'content': 'I could not complete that request.\n\n$error',
-        });
+        messages.last['content'] =
+            'I could not complete that request.\n\n$error';
         busy = false;
         status = '';
       });
@@ -244,8 +250,8 @@ class _NexusChatScreenState extends State<NexusChatScreen> {
 
   Widget _messageBubble(Map<String, dynamic> message) {
     final user = message['role'] == 'user';
-    final files = (message['files'] as List<_Attachment>?) ??
-        const <_Attachment>[];
+    final files =
+        (message['files'] as List<_Attachment>?) ?? const <_Attachment>[];
     final imageBytes = message['imageBytes'];
     final imagePath = message['imagePath'];
 
@@ -280,7 +286,9 @@ class _NexusChatScreenState extends State<NexusChatScreen> {
                   ),
                 ),
               SelectableText(
-                message['content'] as String,
+                (message['content'] as String).isEmpty && busy
+                    ? status
+                    : message['content'] as String,
                 style: const TextStyle(
                   color: JagxColors.fg,
                   height: 1.5,
@@ -316,7 +324,12 @@ class _NexusChatScreenState extends State<NexusChatScreen> {
       children: [
         Expanded(
           child: messages.isEmpty
-              ? const SizedBox.expand()
+              ? const Center(
+                  child: Text(
+                    'Ask JagX anything',
+                    style: TextStyle(color: JagxColors.muted, fontSize: 18),
+                  ),
+                )
               : ListView.builder(
                   padding: const EdgeInsets.all(18),
                   itemCount: messages.length,
