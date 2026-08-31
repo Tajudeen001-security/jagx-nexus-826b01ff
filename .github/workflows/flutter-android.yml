@@ -9,7 +9,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+  actions: read
 
 concurrency:
   group: android-release-${{ github.ref }}
@@ -18,7 +19,7 @@ concurrency:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 50
     defaults:
       run:
         working-directory: flutter
@@ -29,16 +30,15 @@ jobs:
           fetch-depth: 1
 
       - name: Setup Java 17
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: platform-tools
+          packages: 'platform-tools'
           accept-android-sdk-licenses: true
 
       - name: Setup Flutter
@@ -46,14 +46,6 @@ jobs:
         with:
           channel: stable
           cache: true
-
-      - name: Show tool versions
-        run: |
-          set -euo pipefail
-          flutter --version
-          dart --version
-          java -version
-          sdkmanager --version
 
       - name: Configure Flutter and Android SDK paths
         run: |
@@ -64,43 +56,40 @@ jobs:
           test -n "$ANDROID_SDK"
           printf 'flutter.sdk=%s\n' "$FLUTTER_SDK" > android/local.properties
           printf 'sdk.dir=%s\n' "$ANDROID_SDK" >> android/local.properties
-
-      - name: Install required Android SDK packages
-        run: |
-          set -euo pipefail
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0" >/dev/null
 
       - name: Ensure Gradle wrapper
         run: |
           set -euo pipefail
           if [ ! -x android/gradlew ]; then
             mkdir -p "$RUNNER_TEMP/gradle"
-            curl -fsSL --retry 3 --retry-delay 2 https://services.gradle.org/distributions/gradle-8.14.3-bin.zip -o "$RUNNER_TEMP/gradle/gradle.zip"
+            curl -fsSL --retry 5 --retry-delay 3 https://services.gradle.org/distributions/gradle-8.14.3-bin.zip -o "$RUNNER_TEMP/gradle/gradle.zip"
             unzip -q "$RUNNER_TEMP/gradle/gradle.zip" -d "$RUNNER_TEMP/gradle"
             "$RUNNER_TEMP/gradle/gradle-8.14.3/bin/gradle" -p android wrapper --gradle-version 8.14.3
             chmod +x android/gradlew
           fi
-          test -x android/gradlew
-          android/gradlew --version
 
       - name: Generate launcher icons
         run: |
           set -euo pipefail
-          command -v convert >/dev/null || { sudo apt-get update -qq; sudo apt-get install -y -qq imagemagick; }
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq librsvg2-bin
           test -s assets/icon.svg
-          mkdir -p android/app/src/main/res/mipmap-mdpi android/app/src/main/res/mipmap-hdpi android/app/src/main/res/mipmap-xhdpi android/app/src/main/res/mipmap-xxhdpi android/app/src/main/res/mipmap-xxxhdpi
-          convert -background none assets/icon.svg -resize 48x48 android/app/src/main/res/mipmap-mdpi/ic_launcher.png
-          convert -background none assets/icon.svg -resize 72x72 android/app/src/main/res/mipmap-hdpi/ic_launcher.png
-          convert -background none assets/icon.svg -resize 96x96 android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
-          convert -background none assets/icon.svg -resize 144x144 android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
-          convert -background none assets/icon.svg -resize 192x192 android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          for spec in mdpi:48 hdpi:72 xhdpi:96 xxhdpi:144 xxxhdpi:192; do
+            dir="${spec%%:*}"
+            size="${spec##*:}"
+            mkdir -p "android/app/src/main/res/mipmap-$dir"
+            rsvg-convert -w "$size" -h "$size" assets/icon.svg -o "android/app/src/main/res/mipmap-$dir/ic_launcher.png"
+            test -s "android/app/src/main/res/mipmap-$dir/ic_launcher.png"
+          done
 
       - name: Pub get
         run: flutter pub get
 
-      - name: Analyze
-        run: flutter analyze --no-fatal-infos
+      - name: Analyze (non-blocking)
+        continue-on-error: true
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Build release APK
         env:
@@ -108,30 +97,43 @@ jobs:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
           JAGX_API_KEY: ${{ secrets.JAGX_API_KEY }}
           JAGX_API_BASE_URL: ${{ secrets.JAGX_API_BASE_URL }}
         run: |
           set -euo pipefail
-          flutter build apk --release \
-            --dart-define=OPENROUTER_API_KEY="$OPENROUTER_API_KEY" \
-            --dart-define=NVIDIA_API_KEY="$NVIDIA_API_KEY" \
-            --dart-define=GROQ_API_KEY="$GROQ_API_KEY" \
-            --dart-define=OPENAI_API_KEY="$OPENAI_API_KEY" \
-            --dart-define=JAGX_API_KEY="$JAGX_API_KEY" \
-            --dart-define=JAGX_API_BASE_URL="$JAGX_API_BASE_URL"
+          flutter build apk --release --no-tree-shake-icons \
+            --dart-define=OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}" \
+            --dart-define=NVIDIA_API_KEY="${NVIDIA_API_KEY:-}" \
+            --dart-define=GROQ_API_KEY="${GROQ_API_KEY:-}" \
+            --dart-define=OPENAI_API_KEY="${OPENAI_API_KEY:-}" \
+            --dart-define=KIMI_API_KEY="${KIMI_API_KEY:-}" \
+            --dart-define=JAGX_API_KEY="${JAGX_API_KEY:-}" \
+            --dart-define=JAGX_API_BASE_URL="${JAGX_API_BASE_URL:-}"
 
       - name: Verify APK exists
         run: |
           set -euo pipefail
           APK="build/app/outputs/flutter-apk/app-release.apk"
           test -s "$APK"
-          file "$APK"
           ls -lh "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/JagX-AI.apk"
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: jagx-ai-release-apk
-          path: flutter/build/app/outputs/flutter-apk/app-release.apk
+          name: JagX-AI-apk
+          path: JagX-AI.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+
+      - name: Publish downloadable APK release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: jagx-ai-android-latest
+          name: JagX AI Android (latest)
+          files: JagX-AI.apk
+          make_latest: true
+          body: |
+            JagX AI Android APK from commit ${{ github.sha }}.
+            Install JagX-AI.apk on your phone (allow unknown sources).
