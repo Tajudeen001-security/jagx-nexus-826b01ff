@@ -1,12 +1,13 @@
 /// Runtime config. Prefer --dart-define / CI secrets over hardcoding.
 class AppConfig {
-  static const version = '1.4.0';
+  static const version = '1.4.1';
   static const appName = 'JagX AI';
 
   static const openRouterApiKey = String.fromEnvironment('OPENROUTER_API_KEY', defaultValue: '');
   static const nvidiaApiKey = String.fromEnvironment('NVIDIA_API_KEY', defaultValue: '');
   static const groqApiKey = String.fromEnvironment('GROQ_API_KEY', defaultValue: '');
   static const openAiApiKey = String.fromEnvironment('OPENAI_API_KEY', defaultValue: '');
+  static const kimiApiKey = String.fromEnvironment('KIMI_API_KEY', defaultValue: '');
   static const jagxApiKey = String.fromEnvironment('JAGX_API_KEY', defaultValue: '');
   static const jagxApiBaseUrl = String.fromEnvironment('JAGX_API_BASE_URL', defaultValue: '');
 
@@ -15,6 +16,13 @@ class AppConfig {
   static const nvidiaBase = 'https://integrate.api.nvidia.com/v1';
   static const groqBase = 'https://api.groq.com/openai/v1';
   static const openAiBase = 'https://api.openai.com/v1';
+  static const kimiBase = 'https://api.moonshot.ai/v1';
 
-  static bool get hasAnyLlmKey => nvidiaApiKey.isNotEmpty || openRouterApiKey.isNotEmpty || groqApiKey.isNotEmpty || jagxApiKey.isNotEmpty || openAiApiKey.isNotEmpty;
+  static bool get hasAnyLlmKey =>
+      groqApiKey.isNotEmpty ||
+      nvidiaApiKey.isNotEmpty ||
+      openRouterApiKey.isNotEmpty ||
+      kimiApiKey.isNotEmpty ||
+      jagxApiKey.isNotEmpty ||
+      openAiApiKey.isNotEmpty;
 }
